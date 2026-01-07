@@ -18,10 +18,11 @@ const app = express();
 // CORS configuration - allow requests from frontend
 app.use(cors({
   origin: [
-    'http://localhost:5173',  // Vite dev server
-    'https://ten-cua-ban.vercel.app'  // Production frontend
+    'http://localhost:5173',  // Local development (Create React App)
+    'https://fit-track-frontend-gray.vercel.app'  // Production frontend on Vercel
   ],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 

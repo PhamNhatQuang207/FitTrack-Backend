@@ -45,6 +45,50 @@ const createWorkoutSession = async (req, res) => {
             return res.status(400).json({ message: 'Workout name and at least one exercise are required' });
         }
 
+        // Check if an active session already exists for this schedule and day
+        if (weeklyScheduleId && dayOfWeek !== undefined) {
+            // Prepare robust query values
+            let scheduleIdQueries = [{ weeklyScheduleId: weeklyScheduleId }];
+            try {
+                // Try to add ObjectId version if valid
+                if (ObjectId.isValid(weeklyScheduleId)) {
+                    scheduleIdQueries.push({ weeklyScheduleId: new ObjectId(weeklyScheduleId) });
+                }
+            } catch (e) {
+                // Ignore invalid ObjectId errors
+            }
+
+            const dayOfWeekQueries = [
+                { dayOfWeek: dayOfWeek },
+                { dayOfWeek: parseInt(dayOfWeek) },
+                { dayOfWeek: String(dayOfWeek) }
+            ];
+
+            const existingSession = await db.collection('workout-sessions').findOne({
+                userId: new ObjectId(userId),
+                $and: [
+                    { $or: scheduleIdQueries },
+                    { $or: dayOfWeekQueries },
+                    { status: { $in: ['planned', 'in-progress', 'in_progress', 'paused'] } } // Only resume active sessions
+                ]
+            });
+
+            if (existingSession) {
+                // Return existing session formatted correctly
+                return res.status(200).json({
+                    message: 'Resuming existing workout session',
+                    sessionId: existingSession._id,
+                    session: {
+                        ...existingSession,
+                        exercises: normalizeExercises(existingSession.exercises || []),
+                        id: existingSession._id,
+                        _id: undefined,
+                        userId: undefined
+                    }
+                });
+            }
+        }
+
         // Create workout session
         const session = {
             userId: new ObjectId(userId),
@@ -86,11 +130,18 @@ const createWorkoutSession = async (req, res) => {
 
         // Add weekly schedule metadata if provided
         if (weeklyScheduleId) {
-            session.weeklyScheduleId = new ObjectId(weeklyScheduleId);
+            try {
+                session.weeklyScheduleId = new ObjectId(weeklyScheduleId);
+            } catch (e) {
+                session.weeklyScheduleId = weeklyScheduleId; // Fallback to string if invalid ObjectId
+            }
         }
+        
         if (dayOfWeek !== undefined && dayOfWeek !== null) {
             session.dayOfWeek = dayOfWeek;
         }
+
+        console.log("Creating new session:", JSON.stringify(session, null, 2));
 
         const result = await db.collection('workout-sessions').insertOne(session);
 

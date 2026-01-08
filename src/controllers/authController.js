@@ -36,7 +36,7 @@ const register = async (req, res) => {
         const result = await db.collection('users').insertOne(newUser);
         
         // Send verification email
-        const verificationUrl = `https://fit-track-frontend-gray.vercel.app/verify-email?token=${verificationToken}`;
+        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
         
         try {
             await sendEmail({
@@ -229,7 +229,7 @@ const requestPasswordReset = async (req, res) => {
         );
 
         // Send reset email
-        const resetUrl = `https://fit-track-frontend-gray.vercel.app/reset-password?token=${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
         try {
             await sendEmail({

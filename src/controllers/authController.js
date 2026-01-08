@@ -36,7 +36,7 @@ const register = async (req, res) => {
         const result = await db.collection('users').insertOne(newUser);
         
         // Send verification email
-        const verificationUrl = `http://localhost:3000/verify-email/${verificationToken}`;
+        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
         
         try {
             await sendEmail({
@@ -175,7 +175,7 @@ const requestPasswordReset = async (req, res) => {
         );
 
         // Send reset email
-        const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
 
         try {
             await sendEmail({

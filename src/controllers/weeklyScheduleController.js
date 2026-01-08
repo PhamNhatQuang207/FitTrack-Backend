@@ -285,11 +285,113 @@ const completeWeek = async (req, res) => {
     }
 };
 
+// Update a day in an active schedule (swap days or toggle rest)
+const updateScheduleDay = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, dayOfWeek, targetDayOfWeek, workout } = req.body;
+        const userId = req.userId;
+        const db = getDb();
+
+        const schedule = await db.collection('weekly-schedules').findOne({
+            _id: new ObjectId(id),
+            userId: new ObjectId(userId)
+        });
+
+        if (!schedule) {
+            return res.status(404).json({ message: 'Schedule not found' });
+        }
+
+        if (schedule.status !== 'active') {
+            return res.status(400).json({ message: 'Can only edit active schedules' });
+        }
+
+        const days = [...schedule.days];
+        const dayIndex = days.findIndex(d => d.dayOfWeek === dayOfWeek);
+        
+        if (dayIndex === -1) {
+            return res.status(400).json({ message: 'Invalid day of week' });
+        }
+
+        if (action === 'swap') {
+            const targetIndex = days.findIndex(d => d.dayOfWeek === targetDayOfWeek);
+            
+            if (targetIndex === -1) {
+                return res.status(400).json({ message: 'Invalid target day of week' });
+            }
+
+            const tempWorkout = days[dayIndex].workout;
+            const tempIsRestDay = days[dayIndex].isRestDay;
+            
+            days[dayIndex].workout = days[targetIndex].workout;
+            days[dayIndex].isRestDay = days[targetIndex].isRestDay;
+            
+            days[targetIndex].workout = tempWorkout;
+            days[targetIndex].isRestDay = tempIsRestDay;
+
+        } else if (action === 'toggleRest') {
+            if (days[dayIndex].isRestDay) {
+                days[dayIndex].isRestDay = false;
+                days[dayIndex].workout = workout || {
+                    name: 'Workout',
+                    exercises: [],
+                    isCompleted: false,
+                    completedAt: null
+                };
+            } else {
+                days[dayIndex].isRestDay = true;
+                days[dayIndex].workout = null;
+            }
+        } else if (action === 'assignWorkout') {
+            if (!workout) {
+                return res.status(400).json({ message: 'Workout data required for assignWorkout action' });
+            }
+            
+            days[dayIndex].isRestDay = false;
+            days[dayIndex].workout = {
+                name: workout.name,
+                exercises: workout.exercises.map(ex => ({
+                    ...ex,
+                    isCompleted: false,
+                    actualSets: []
+                })),
+                isCompleted: false,
+                completedAt: null
+            };
+        } else {
+            return res.status(400).json({ message: 'Invalid action. Must be swap, toggleRest, or assignWorkout' });
+        }
+
+        const totalWorkoutDays = days.filter(d => !d.isRestDay).length;
+
+        await db.collection('weekly-schedules').updateOne(
+            { _id: new ObjectId(id) },
+            { 
+                $set: { 
+                    days,
+                    totalWorkoutDays,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        res.json({ 
+            message: 'Schedule updated successfully',
+            updatedSchedule: { ...schedule, days, totalWorkoutDays }
+        });
+
+    } catch (error) {
+        console.error('Error updating schedule day:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     startWeeklySchedule,
     getWeeklySchedules,
     getCurrentWeek,
     getWeeklyScheduleById,
     completeDayWorkout,
-    completeWeek
+    completeWeek,
+    updateScheduleDay
 };

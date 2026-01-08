@@ -7,7 +7,8 @@ const {
     getCurrentWeek,
     getWeeklyScheduleById,
     completeDayWorkout,
-    completeWeek
+    completeWeek,
+    updateScheduleDay
 } = require('../controllers/weeklyScheduleController');
 
 // All routes are protected
@@ -19,5 +20,6 @@ router.get('/current', getCurrentWeek);
 router.get('/:id', getWeeklyScheduleById);
 router.patch('/:id/complete-day', completeDayWorkout);
 router.patch('/:id/complete', completeWeek);
+router.patch('/:id/update-day', updateScheduleDay);
 
 module.exports = router;

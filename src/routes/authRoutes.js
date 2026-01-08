@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const { check } = require('express-validator');
+const validate = require('../middleware/validate');
+const { authLimiter } = require('../middleware/rateLimiter');
 const { register, login, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
 
 /**
@@ -58,7 +61,16 @@ const { register, login, verifyEmail, requestPasswordReset, resetPassword } = re
  *                   type: string
  *                   example: User already exists
  */
-router.post('/register', register);
+router.post('/register', 
+    authLimiter,
+    [
+        check('name', 'Name is required').not().isEmpty().isString(),
+        check('email', 'Please include a valid email').isEmail(),
+        check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }).isString()
+    ],
+    validate,
+    register
+);
 
 /**
  * @swagger
@@ -128,7 +140,15 @@ router.post('/register', register);
  *                   type: string
  *                   example: User not found
  */
-router.post('/login', login);
+router.post('/login',
+    authLimiter,
+    [
+        check('email', 'Please include a valid email').isEmail(),
+        check('password', 'Password is required').exists().isString()
+    ],
+    validate,
+    login
+);
 
 /**
  * @swagger

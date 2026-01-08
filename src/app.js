@@ -5,6 +5,8 @@ const swaggerSpec = require('./config/swagger');
 const { connectDB } = require('./config/db');
 const dotenv = require('dotenv');
 const authRoutes = require('./routes/authRoutes');
+const helmet = require('helmet');
+const { limiter } = require('./middleware/rateLimiter');
 const userRoutes = require('./routes/userRoutes');
 const workoutRoutes = require('./routes/workoutRoutes');
 const exerciseRoutes = require('./routes/exerciseRoutes');
@@ -25,6 +27,10 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Security Middleware
+app.use(helmet());
+app.use('/api', limiter); // Apply global rate limit to API routes
 
 app.use(express.json());
 

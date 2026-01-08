@@ -3,7 +3,7 @@ require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const sendEmail = require('../utils/sendEmailResend');
+const sendEmail = require('../utils/sendEmailSmart');
 
 const register = async (req, res) => {
     try {

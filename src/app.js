@@ -17,6 +17,9 @@ const weeklyScheduleRoutes = require('./routes/weeklyScheduleRoutes');
 dotenv.config();
 const app = express();
 
+// Trust the first proxy (Render load balancer)
+app.set('trust proxy', 1);
+
 // CORS configuration - allow requests from frontend
 app.use(cors({
   origin: [

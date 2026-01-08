@@ -5,7 +5,7 @@ const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NOD
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isDevelopment ? 10000 : 100, // Much higher limit in dev
+    max: isDevelopment ? 10000 : 1000, // Increased from 100 to 1000
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -16,7 +16,7 @@ const limiter = rateLimit({
 
 const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: isDevelopment ? 10000 : 5, // Much higher limit in dev
+    max: isDevelopment ? 10000 : 50, // Increased from 5 to 50
     message: {
         message: 'Too many login attempts from this IP, please try again after an hour'
     },

@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 
 const updateProgress = async (req, res) => {
     try {
-        const { weight, bodyFat, height, age, sex } = req.body;
+        const { name, weight, bodyFat, height, age, sex } = req.body;
         const userId = req.userId;
         const db = getDb();
 
@@ -31,6 +31,7 @@ const updateProgress = async (req, res) => {
 
         // Build the $set update object for profile fields
         const setUpdate = {};
+        if (name !== undefined) setUpdate.name = name;
         if (height !== undefined) setUpdate.height = Number(height);
         if (age !== undefined) setUpdate.age = Number(age);
         if (sex !== undefined) setUpdate.sex = sex;

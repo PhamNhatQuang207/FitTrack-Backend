@@ -12,6 +12,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  */
 const sendEmail = async (options) => {
     try {
+        // Check if API key is configured
+        if (!process.env.RESEND_API_KEY) {
+            console.error('❌ RESEND_API_KEY is not configured in environment variables');
+            throw new Error('Resend API key is missing');
+        }
+
         const result = await resend.emails.send({
             from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
             to: options.to,
@@ -19,11 +25,22 @@ const sendEmail = async (options) => {
             html: options.html,
         });
         
-        console.log('✅ Email sent successfully via Resend:', result.id);
+        // Check if result is valid
+        if (!result || !result.data) {
+            console.error('❌ Resend returned invalid response:', result);
+            throw new Error('Invalid response from Resend API');
+        }
+        
+        console.log('✅ Email sent successfully via Resend');
+        console.log('📧 Email ID:', result.data.id);
+        console.log('📬 Sent to:', options.to);
         return result;
     } catch (error) {
-        console.error('❌ Resend error:', error);
-        throw new Error('Failed to send email');
+        console.error('❌ Resend error:', error.message);
+        if (error.name === 'ResendError') {
+            console.error('🔑 API Key issue - check your RESEND_API_KEY');
+        }
+        throw new Error('Failed to send email: ' + error.message);
     }
 };
 

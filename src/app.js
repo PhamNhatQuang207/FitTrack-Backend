@@ -29,7 +29,7 @@ app.use(cors({
 app.use(express.json());
 
 // Health check endpoint for Render
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
     message: 'Server is running',

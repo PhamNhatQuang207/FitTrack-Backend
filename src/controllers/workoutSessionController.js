@@ -1,6 +1,38 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
 
+// Helper function to normalize exercises to new format (backward compatibility)
+const normalizeExercises = (exercises) => {
+    return exercises.map(ex => {
+        // If already in new format with sets array, return as-is
+        if (ex.sets && Array.isArray(ex.sets)) {
+            return ex;
+        }
+        
+        // Convert old format to new format
+        if (ex.targetSets && ex.targetReps !== undefined && ex.targetWeight !== undefined) {
+            const sets = [];
+            for (let i = 1; i <= ex.targetSets; i++) {
+                sets.push({
+                    setNumber: i,
+                    targetReps: ex.targetReps,
+                    targetWeight: ex.targetWeight
+                });
+            }
+            
+            return {
+                ...ex,
+                sets,
+                // Keep old fields for compatibility
+                _convertedFromOldFormat: true
+            };
+        }
+        
+        // If neither format, return as-is
+        return ex;
+    });
+};
+
 // Create a new workout session
 const createWorkoutSession = async (req, res) => {
     try {
@@ -18,16 +50,33 @@ const createWorkoutSession = async (req, res) => {
             userId: new ObjectId(userId),
             name,
             date: scheduledDate ? new Date(scheduledDate) : new Date(),
-            exercises: exercises.map(ex => ({
-                exerciseId: new ObjectId(ex.exerciseId),
-                exerciseName: ex.exerciseName,
-                category: ex.category,
-                targetSets: ex.targetSets || 3,
-                targetReps: ex.targetReps || 10,
-                targetWeight: ex.targetWeight || 0,
-                completed: false,
-                actualSets: []
-            })),
+            exercises: exercises.map(ex => {
+                // Support both old format (targetSets/Reps/Weight) and new format (sets array)
+                let exerciseData = {
+                    exerciseId: new ObjectId(ex.exerciseId),
+                    exerciseName: ex.exerciseName,
+                    category: ex.category,
+                    completed: false,
+                    actualSets: []
+                };
+
+                // New format: sets array with individual reps/weight per set
+                if (ex.sets && Array.isArray(ex.sets)) {
+                    exerciseData.sets = ex.sets.map(set => ({
+                        setNumber: set.setNumber,
+                        targetReps: set.targetReps || 10,
+                        targetWeight: set.targetWeight || 0
+                    }));
+                } 
+                // Old format: single target for all sets (backward compatibility)
+                else {
+                    exerciseData.targetSets = ex.targetSets || 3;
+                    exerciseData.targetReps = ex.targetReps || 10;
+                    exerciseData.targetWeight = ex.targetWeight || 0;
+                }
+
+                return exerciseData;
+            }),
             status: 'planned',
             completedAt: null,
             notes: notes || '',
@@ -73,6 +122,7 @@ const getWorkoutSessions = async (req, res) => {
 
         res.json(sessions.map(session => ({
             ...session,
+            exercises: normalizeExercises(session.exercises || []),
             id: session._id,
             _id: undefined,
             userId: undefined
@@ -100,6 +150,7 @@ const getWorkoutSessionById = async (req, res) => {
 
         res.json({
             ...session,
+            exercises: normalizeExercises(session.exercises || []),
             id: session._id,
             _id: undefined,
             userId: undefined

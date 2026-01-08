@@ -1,21 +1,26 @@
 const rateLimit = require('express-rate-limit');
 
+// Skip rate limiting in development
+const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    max: isDevelopment ? 10000 : 100, // Much higher limit in dev
+    standardHeaders: true,
+    legacyHeaders: false,
     message: {
         message: 'Too many requests from this IP, please try again after 15 minutes'
-    }
+    },
+    skip: (req) => isDevelopment // Skip entirely in development
 });
 
 const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // Limit each IP to 5 login/register requests per hour
+    max: isDevelopment ? 10000 : 5, // Much higher limit in dev
     message: {
         message: 'Too many login attempts from this IP, please try again after an hour'
-    }
+    },
+    skip: (req) => isDevelopment // Skip entirely in development
 });
 
 module.exports = { limiter, authLimiter };

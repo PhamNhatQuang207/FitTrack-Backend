@@ -293,6 +293,12 @@ const updateScheduleDay = async (req, res) => {
         const userId = req.userId;
         const db = getDb();
 
+        // Validate ObjectId format
+        if (!ObjectId.isValid(id)) {
+            console.error('Invalid schedule ID:', id);
+            return res.status(400).json({ message: 'Invalid schedule ID format' });
+        }
+
         const schedule = await db.collection('weekly-schedules').findOne({
             _id: new ObjectId(id),
             userId: new ObjectId(userId)
@@ -358,8 +364,17 @@ const updateScheduleDay = async (req, res) => {
                 isCompleted: false,
                 completedAt: null
             };
+        } else if (action === 'updateWorkoutName') {
+            const { workoutName } = req.body;
+            if (!workoutName) {
+                return res.status(400).json({ message: 'Workout name is required' });
+            }
+            if (days[dayIndex].isRestDay) {
+                return res.status(400).json({ message: 'Cannot update name for rest day' });
+            }
+            days[dayIndex].workout.name = workoutName;
         } else {
-            return res.status(400).json({ message: 'Invalid action. Must be swap, toggleRest, or assignWorkout' });
+            return res.status(400).json({ message: 'Invalid action. Must be swap, toggleRest, assignWorkout, or updateWorkoutName' });
         }
 
         const totalWorkoutDays = days.filter(d => !d.isRestDay).length;

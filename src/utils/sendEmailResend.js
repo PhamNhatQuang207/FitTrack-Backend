@@ -19,7 +19,7 @@ const sendEmail = async (options) => {
         }
 
         const result = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+            from: process.env.EMAIL_FROM || 'FitTrack <noreply@mail.quangpn.cloud>',
             to: options.to,
             subject: options.subject,
             html: options.html,

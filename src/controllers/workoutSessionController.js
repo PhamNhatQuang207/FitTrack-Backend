@@ -41,8 +41,8 @@ const createWorkoutSession = async (req, res) => {
         const db = getDb();
 
         // Validation
-        if (!name || !exercises || exercises.length === 0) {
-            return res.status(400).json({ message: 'Workout name and at least one exercise are required' });
+        if (!name || !exercises) {
+            return res.status(400).json({ message: 'Workout name and exercises array are required' });
         }
 
         // Check if an active session already exists for this schedule and day

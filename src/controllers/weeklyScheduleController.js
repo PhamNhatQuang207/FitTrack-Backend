@@ -198,7 +198,6 @@ const completeDayWorkout = async (req, res) => {
         const userId = req.userId;
         const db = getDb();
 
-        console.log("completeDayWorkout called with:", { id, dayOfWeek, userId });
 
         const schedule = await db.collection('weekly-schedules').findOne({
             _id: new ObjectId(id),
@@ -206,27 +205,20 @@ const completeDayWorkout = async (req, res) => {
         });
 
         if (!schedule) {
-            console.log("Schedule not found");
             return res.status(404).json({ message: 'Weekly schedule not found' });
         }
 
-        console.log("Schedule found:", {
-            scheduleId: schedule._id,
-            days: schedule.days.map(d => ({ dayOfWeek: d.dayOfWeek, dayName: d.dayName, isCompleted: d.workout?.isCompleted }))
-        });
 
         // Update the specific day
         const dayIndex = schedule.days.findIndex(d => d.dayOfWeek === dayOfWeek);
-        console.log("Day index found:", dayIndex);
         
         if (dayIndex === -1) {
-            console.log("Day not found for dayOfWeek:", dayOfWeek);
+
             return res.status(404).json({ message: 'Day not found' });
         }
 
         // Check if this day was already completed
         const wasAlreadyCompleted = schedule.days[dayIndex].workout?.isCompleted;
-        console.log("Was already completed:", wasAlreadyCompleted);
         
         const updatePath = `days.${dayIndex}.workout`;
         
@@ -235,7 +227,6 @@ const completeDayWorkout = async (req, res) => {
             ? schedule.completedDays 
             : (schedule.completedDays || 0) + 1;
 
-        console.log("Updating completedDays from", schedule.completedDays, "to", newCompletedDays);
 
         await db.collection('weekly-schedules').updateOne(
             { _id: new ObjectId(id) },
@@ -250,7 +241,6 @@ const completeDayWorkout = async (req, res) => {
             }
         );
 
-        console.log("Update successful");
         res.json({ message: 'Day workout completed successfully', completedDays: newCompletedDays });
     } catch (error) {
         console.error("Error in completeDayWorkout:", error);

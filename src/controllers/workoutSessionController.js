@@ -141,7 +141,6 @@ const createWorkoutSession = async (req, res) => {
             session.dayOfWeek = dayOfWeek;
         }
 
-        console.log("Creating new session:", JSON.stringify(session, null, 2));
 
         const result = await db.collection('workout-sessions').insertOne(session);
 

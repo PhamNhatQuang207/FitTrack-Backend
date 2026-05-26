@@ -24,7 +24,7 @@ app.set('trust proxy', 1);
 app.use(cors({
   origin: [
     'http://localhost:3000',  // Local development (Create React App)
-    'https://gym-tracking-123.vercel.app/'  // Production frontend on Vercel
+    'https://gym-tracking-123.vercel.app'  // Production frontend on Vercel
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],

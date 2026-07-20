@@ -1,0 +1,28 @@
+# Dependencies (installed fresh inside the image)
+node_modules
+npm-debug.log*
+
+# Secrets & local env — must never be baked into an image
+.env
+.env.*
+
+# Version control / CI
+.git
+.gitignore
+.github
+
+# Tests, coverage, and dev-only tooling
+tests
+jest.config.js
+coverage
+.nyc_output
+
+# Docs & docker files themselves
+*.md
+Dockerfile
+.dockerignore
+
+# Editor / OS cruft
+.vscode
+.idea
+.DS_Store

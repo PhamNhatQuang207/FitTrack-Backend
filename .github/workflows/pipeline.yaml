@@ -29,3 +29,23 @@ jobs:
         run: npm ci
       - name: Run tests
         run: npm test
+
+  # Validates that the production image still builds. Build-only (no push):
+  # Render deploys the Native Node runtime, so there is no image consumer yet.
+  # Add push-to-registry here later if the image gets a consumer.
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image (validation only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: fittrack-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

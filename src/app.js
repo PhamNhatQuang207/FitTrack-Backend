@@ -61,11 +61,18 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/weekly-plans', weeklyPlanRoutes);
 app.use('/api/weekly-schedules', weeklyScheduleRoutes);
 const startServer = async () => {
-  await connectDB(); 
+  await connectDB();
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
   });
 };
 
-startServer();
+// Only boot the server (connect + listen) when run directly, e.g. `node src/app.js`.
+// When imported by the test suite, we export the app so supertest can drive it
+// against a test database without opening a real connection or port.
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;

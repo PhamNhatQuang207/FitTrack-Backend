@@ -1,7 +1,8 @@
 const rateLimit = require('express-rate-limit');
 
-// Skip rate limiting in development
-const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+// Only skip rate limiting when development is EXPLICITLY declared.
+// Fail closed: any other value (including an unset NODE_ENV in production) keeps limits ON.
+const isDevelopment = process.env.NODE_ENV === 'development';
 
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -23,4 +24,5 @@ const authLimiter = rateLimit({
     skip: (req) => isDevelopment // Skip entirely in development
 });
 
-module.exports = { limiter, authLimiter };
+// isDevelopment exported for unit testing of the fail-closed behaviour.
+module.exports = { limiter, authLimiter, isDevelopment };

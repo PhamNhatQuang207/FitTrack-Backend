@@ -3,16 +3,17 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const url = process.env.MONGO_URI;
-const client = new MongoClient(url);
-const dbName = process.env.DB_NAME;
-
+let client;
 let db;
 
 const connectDB = async () => {
+  // Read connection info at call time so tests (and env reloads) are respected.
+  const url = process.env.MONGO_URI;
+  const dbName = process.env.DB_NAME;
   try {
+    client = new MongoClient(url);
     await client.connect();
-    console.log('✅ Connected successfully to MongoDB Atlas');
+    console.log('✅ Connected successfully to MongoDB');
     db = client.db(dbName);
     return db;
   } catch (error) {
@@ -28,4 +29,13 @@ const getDb = () => {
   return db;
 };
 
-module.exports = { connectDB, getDb };
+// Close the active connection (used by the test suite for clean teardown).
+const closeDB = async () => {
+  if (client) {
+    await client.close();
+    client = undefined;
+    db = undefined;
+  }
+};
+
+module.exports = { connectDB, getDb, closeDB };

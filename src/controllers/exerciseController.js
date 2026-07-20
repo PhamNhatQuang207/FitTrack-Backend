@@ -43,20 +43,32 @@ const getExercisesByCategory = async (req, res) => {
     }
 };
 
+// Escape user input so it is matched literally (prevents regex injection / ReDoS)
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Search exercises by name
 const searchExercises = async (req, res) => {
     try {
         const { q } = req.query;
         const db = getDb();
-        
-        if (!q) {
+
+        // Only accept a string query and cap its length to avoid abuse
+        if (!q || typeof q !== 'string') {
             return res.status(400).json({ message: 'Search query is required' });
         }
-        
-        // Use text search or regex
+
+        const trimmed = q.trim();
+        if (!trimmed) {
+            return res.status(400).json({ message: 'Search query is required' });
+        }
+        if (trimmed.length > 100) {
+            return res.status(400).json({ message: 'Search query is too long' });
+        }
+
+        // Match the escaped input literally (case-insensitive)
         const exercises = await db.collection('exercises')
             .find({
-                name: { $regex: q, $options: 'i' }
+                name: { $regex: escapeRegex(trimmed), $options: 'i' }
             })
             .toArray();
         
@@ -97,5 +109,6 @@ module.exports = {
     getAllExercises,
     getExercisesByCategory,
     searchExercises,
-    getExerciseById
+    getExerciseById,
+    escapeRegex // exported for unit testing
 };

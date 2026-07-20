@@ -1,7 +1,5 @@
 const { Resend } = require('resend');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 /**
  * Send email using Resend
  * @param {Object} options - Email options
@@ -17,6 +15,10 @@ const sendEmail = async (options) => {
             console.error('❌ RESEND_API_KEY is not configured in environment variables');
             throw new Error('Resend API key is missing');
         }
+
+        // Construct the client lazily so a missing key never crashes at import time
+        // (which broke test/CI environments that don't set RESEND_API_KEY).
+        const resend = new Resend(process.env.RESEND_API_KEY);
 
         const result = await resend.emails.send({
             from: process.env.EMAIL_FROM || 'FitTrack <noreply@mail.quangpn.cloud>',

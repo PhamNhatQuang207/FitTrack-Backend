@@ -219,7 +219,14 @@ router.get('/verify-email/:token', verifyEmail);
  *                   type: string
  *                   example: If an account exists with that email, a password reset link has been sent.
  */
-router.post('/request-password-reset', requestPasswordReset);
+router.post('/request-password-reset',
+    authLimiter,
+    [
+        check('email', 'Please include a valid email').isEmail()
+    ],
+    validate,
+    requestPasswordReset
+);
 
 /**
  * @swagger
@@ -269,6 +276,13 @@ router.post('/request-password-reset', requestPasswordReset);
  *                   type: string
  *                   example: Invalid or expired reset token
  */
-router.post('/reset-password/:token', resetPassword);
+router.post('/reset-password/:token',
+    authLimiter,
+    [
+        check('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }).isString()
+    ],
+    validate,
+    resetPassword
+);
 
 module.exports = router;

@@ -97,6 +97,18 @@ describe('GET /api/weekly-schedules', () => {
     expect(current.body.status).toBe('active');
   });
 
+  test('current week returns 200 with null when the user has no active schedule', async () => {
+    const { token } = await createUserAndToken(db);
+
+    const current = await request(app)
+      .get('/api/weekly-schedules/current')
+      .set(authHeader(token));
+
+    // Empty state is not an error — 200 with a null body, no 404 noise.
+    expect(current.status).toBe(200);
+    expect(current.body).toBeNull();
+  });
+
   test('AUTHORIZATION: another user cannot fetch the schedule by id (404)', async () => {
     const owner = await createUserAndToken(db);
     const attacker = await createUserAndToken(db);

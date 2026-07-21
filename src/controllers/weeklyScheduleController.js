@@ -149,7 +149,10 @@ const getCurrentWeek = async (req, res) => {
         });
 
         if (!schedule) {
-            return res.status(404).json({ message: 'No active schedule for current week' });
+            // Having no active schedule this week is a valid empty state, not an
+            // error. Return 200 with null so callers (Dashboard, WeeklyCalendar)
+            // get a clean empty result instead of a console-noisy 404.
+            return res.json(null);
         }
 
         res.json({

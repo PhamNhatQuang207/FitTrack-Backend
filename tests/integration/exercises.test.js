@@ -17,7 +17,7 @@ beforeEach(async () => {
   await db.collection('exercises').insertMany([
     { _id: benchId, name: 'Bench Press', category: 'Chest' },
     { name: 'Incline Press', category: 'Chest' },
-    { name: 'Barbell Row', category: 'Middle Back' },
+    { name: 'Barbell Row', category: 'Traps' },
     { name: 'Deadlift', category: 'Lower Back' },
   ]);
 });
@@ -40,11 +40,17 @@ describe('GET /api/exercises/category/:category', () => {
     expect(res.body.every((e) => e.category === 'Chest')).toBe(true);
   });
 
-  test('converts an underscored category to Title Case ("middle_back" -> "Middle Back")', async () => {
-    const res = await request(app).get('/api/exercises/category/middle_back');
+  test('converts an underscored category to Title Case ("lower_back" -> "Lower Back")', async () => {
+    const res = await request(app).get('/api/exercises/category/lower_back');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
-    expect(res.body[0].name).toBe('Barbell Row');
+    expect(res.body[0].name).toBe('Deadlift');
+  });
+
+  test('the retired "Middle Back" category no longer matches anything', async () => {
+    const res = await request(app).get('/api/exercises/category/middle_back');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
   });
 });
 

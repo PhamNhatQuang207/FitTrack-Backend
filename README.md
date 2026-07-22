@@ -45,8 +45,7 @@ The backend provides a robust, scalable API with JWT-based authentication, rate 
 |-----------|---------|---------|
 | **Node.js** | Latest | Runtime environment |
 | **Express.js** | ^5.2.1 | Web application framework |
-| **MongoDB** | ^7.0.0 | NoSQL database (MongoDB Atlas) |
-| **Mongoose** | ^9.1.2 | MongoDB object modeling |
+| **MongoDB** | ^7.0.0 | NoSQL database (MongoDB Atlas), via the native driver — no ODM |
 | **JWT (jsonwebtoken)** | ^9.0.3 | Authentication & authorization |
 | **bcryptjs** | ^3.0.3 | Password hashing & security |
 | **Helmet** | ^8.1.0 | Security headers middleware |

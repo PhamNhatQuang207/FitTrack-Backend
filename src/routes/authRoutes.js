@@ -35,7 +35,11 @@ const { register, login, verifyEmail, requestPasswordReset, resetPassword } = re
  *                 example: password123
  *     responses:
  *       201:
- *         description: User registered successfully
+ *         description: |
+ *           Registration accepted. Returned identically whether the account was
+ *           created, an unverified account was re-issued a token, or the address
+ *           was already registered and verified — the response must not reveal
+ *           which, or it becomes a user-enumeration oracle.
  *         content:
  *           application/json:
  *             schema:
@@ -43,15 +47,9 @@ const { register, login, verifyEmail, requestPasswordReset, resetPassword } = re
  *               properties:
  *                 message:
  *                   type: string
- *                   example: User registered successfully
- *                 token:
- *                   type: string
- *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *                 userId:
- *                   type: string
- *                   example: 507f1f77bcf86cd799439011
+ *                   example: Registration successful! Please check your email to verify your account.
  *       400:
- *         description: User already exists or validation error
+ *         description: Validation error (invalid email, short password, missing name)
  *         content:
  *           application/json:
  *             schema:
@@ -59,7 +57,7 @@ const { register, login, verifyEmail, requestPasswordReset, resetPassword } = re
  *               properties:
  *                 message:
  *                   type: string
- *                   example: User already exists
+ *                   example: Please include a valid email
  */
 router.post('/register', 
     authLimiter,

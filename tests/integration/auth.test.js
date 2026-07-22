@@ -39,24 +39,62 @@ describe('POST /api/auth/register', () => {
       .send({ name: 'Jane', email: 'jane@test.com', password: 'password123' });
 
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('userId');
+    expect(res.body).not.toHaveProperty('userId'); // would leak a real user id
 
     const user = await db.collection('users').findOne({ email: 'jane@test.com' });
     expect(user).toBeTruthy();
     expect(user.isVerified).toBe(false);
     expect(user.password).not.toBe('password123'); // stored hashed
     expect(user.verificationToken).toEqual(expect.any(String));
+    expect(user.verificationTokenExpiry).toBeInstanceOf(Date);
     expect(sendEmailSmart).toHaveBeenCalledTimes(1);
   });
 
-  test('rejects a duplicate email', async () => {
+  test('SECURITY: a taken email is indistinguishable from a fresh signup', async () => {
+    const fresh = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'New', email: 'new@test.com', password: 'password123' });
+
     await seedUser({ email: 'dupe@test.com' });
-    const res = await request(app)
+    const dupe = await request(app)
       .post('/api/auth/register')
       .send({ name: 'Dupe', email: 'dupe@test.com', password: 'password123' });
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('User already exists');
+    expect(dupe.status).toBe(fresh.status);
+    expect(dupe.body).toEqual(fresh.body);
+  });
+
+  test('SECURITY: registering over a verified account does not touch it', async () => {
+    await seedUser({ email: 'owner@test.com', name: 'Owner' });
+    sendEmailSmart.mockClear();
+
+    await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Attacker', email: 'owner@test.com', password: 'hunter22222' });
+
+    const user = await db.collection('users').findOne({ email: 'owner@test.com' });
+    expect(user.name).toBe('Owner');
+    expect(await bcrypt.compare('password123', user.password)).toBe(true);
+    expect(sendEmailSmart).not.toHaveBeenCalled();
+  });
+
+  test('re-registering an unverified account issues a fresh token and email', async () => {
+    await seedUser({
+      email: 'pending@test.com',
+      isVerified: false,
+      verificationToken: 'stale-token',
+    });
+    sendEmailSmart.mockClear();
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Pending', email: 'pending@test.com', password: 'newpassword' });
+
+    expect(res.status).toBe(201);
+    const user = await db.collection('users').findOne({ email: 'pending@test.com' });
+    expect(user.verificationToken).not.toBe('stale-token');
+    expect(user.verificationTokenExpiry).toBeInstanceOf(Date);
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
   });
 
   test('rejects missing name', async () => {
@@ -144,14 +182,45 @@ describe('POST /api/auth/login', () => {
 });
 
 describe('GET /api/auth/verify-email/:token', () => {
-  test('verifies a user with a valid token', async () => {
-    await seedUser({ email: 'v@test.com', isVerified: false, verificationToken: 'tok-verify' });
+  const hoursFromNow = (h) => new Date(Date.now() + h * 60 * 60 * 1000);
+
+  test('verifies a user with a valid, unexpired token', async () => {
+    await seedUser({
+      email: 'v@test.com',
+      isVerified: false,
+      verificationToken: 'tok-verify',
+      verificationTokenExpiry: hoursFromNow(1),
+    });
     const res = await request(app).get('/api/auth/verify-email/tok-verify');
 
     expect(res.status).toBe(200);
     const user = await db.collection('users').findOne({ email: 'v@test.com' });
     expect(user.isVerified).toBe(true);
     expect(user.verificationToken).toBeUndefined();
+    expect(user.verificationTokenExpiry).toBeUndefined();
+  });
+
+  test('SECURITY: rejects a token past its 24-hour expiry', async () => {
+    await seedUser({
+      email: 'old@test.com',
+      isVerified: false,
+      verificationToken: 'tok-expired',
+      verificationTokenExpiry: hoursFromNow(-1),
+    });
+    const res = await request(app).get('/api/auth/verify-email/tok-expired');
+
+    expect(res.status).toBe(400);
+    const user = await db.collection('users').findOne({ email: 'old@test.com' });
+    expect(user.isVerified).toBe(false);
+  });
+
+  test('SECURITY: rejects a legacy token that carries no expiry at all', async () => {
+    await seedUser({ email: 'legacy@test.com', isVerified: false, verificationToken: 'tok-legacy' });
+    const res = await request(app).get('/api/auth/verify-email/tok-legacy');
+
+    expect(res.status).toBe(400);
+    const user = await db.collection('users').findOne({ email: 'legacy@test.com' });
+    expect(user.isVerified).toBe(false);
   });
 
   test('rejects an invalid token', async () => {

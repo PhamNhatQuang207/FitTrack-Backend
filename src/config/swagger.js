@@ -13,6 +13,10 @@ const options = {
     },
     servers: [
       {
+        url: 'https://api.fittrack.io.vn',
+        description: 'Production server'
+      },
+      {
         url: 'http://localhost:5000',
         description: 'Development server'
       }

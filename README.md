@@ -2,7 +2,8 @@
 
 A comprehensive RESTful fitness tracking and workout planning backend service built with Node.js and Express. FitTrack enables users to log workouts, track progress, plan weekly training schedules, and gain insights through detailed analytics.
 
-**Live Frontend:** https://fit-track-frontend-gray.vercel.app
+**Live Frontend:** https://fittrack.io.vn
+**Live API:** https://api.fittrack.io.vn
 
 ---
 
@@ -232,25 +233,26 @@ FRONTEND_URL=http://localhost:3000
 MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
 DB_NAME=fittrack
 
-# Authentication
+# Authentication (token expiry is fixed at 7d in authController)
 JWT_SECRET=your_super_secret_jwt_key_min_32_chars
-JWT_EXPIRE=7d
+
+# Email delivery: 'resend' or 'smtp'. Defaults to resend in production, smtp in dev.
+EMAIL_SERVICE=resend
+EMAIL_FROM=FitTrack <noreply@mail.fittrack.io.vn>
 
 # Email Configuration (Resend API)
 RESEND_API_KEY=re_xxxxxxxxxxxx
-FROM_EMAIL=noreply@fittrack.com
 
 # Email Configuration (Fallback - Nodemailer SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-
-# Application Settings
-ALLOWED_ORIGIN=https://fit-track-frontend-gray.vercel.app
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=1000
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
 ```
+
+> The CORS allowlist is hardcoded in `src/app.js`, not read from an env var —
+> add new frontend origins there. Rate limits are hardcoded in
+> `src/middleware/rateLimiter.js`.
 
 ### Required Environment Variables
 
@@ -259,9 +261,9 @@ RATE_LIMIT_MAX_REQUESTS=1000
 | `MONGO_URI` | MongoDB Atlas connection string | `mongodb+srv://...` |
 | `DB_NAME` | Database name | `fittrack` |
 | `JWT_SECRET` | Secret key for JWT signing (min 32 chars) | `your_secret_key` |
-| `JWT_EXPIRE` | Token expiration time | `7d` |
+| `FRONTEND_URL` | Base URL used to build verification / reset links | `https://fittrack.io.vn` |
 | `RESEND_API_KEY` | Resend API key for email delivery | `re_xxxx...` |
-| `FROM_EMAIL` | Sender email address | `noreply@fittrack.com` |
+| `EMAIL_FROM` | Sender address (domain must be verified in Resend) | `FitTrack <noreply@mail.fittrack.io.vn>` |
 
 ---
 
@@ -270,7 +272,7 @@ RATE_LIMIT_MAX_REQUESTS=1000
 ### Base URL
 ```
 Development: http://localhost:5000
-Production: https://fittrack-api.render.com (or your domain)
+Production: https://api.fittrack.io.vn
 ```
 
 All protected endpoints require JWT token in Authorization header:

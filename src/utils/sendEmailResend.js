@@ -21,7 +21,7 @@ const sendEmail = async (options) => {
         const resend = new Resend(process.env.RESEND_API_KEY);
 
         const result = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'FitTrack <noreply@mail.quangpn.cloud>',
+            from: process.env.EMAIL_FROM || 'FitTrack <noreply@mail.fittrack.io.vn>',
             to: options.to,
             subject: options.subject,
             html: options.html,

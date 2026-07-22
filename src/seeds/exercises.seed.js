@@ -21,10 +21,10 @@ const exercises = [
   { name: "Barbell Row", category: "Lats", muscleGroup: "Back", equipment: "Barbell", difficulty: "Intermediate", instructions: ["Bent over position", "Pull bar to lower chest", "Lower with control"] },
   { name: "Dumbbell Row", category: "Lats", muscleGroup: "Back", equipment: "Dumbbell", difficulty: "Beginner", instructions: ["Support on bench", "Pull dumbbell to hip", "Lower slowly"] },
 
-  // BACK - MIDDLE BACK
-  { name: "Seated Cable Row", category: "Middle Back", muscleGroup: "Back", equipment: "Cable", difficulty: "Beginner", instructions: ["Pull handle to torso", "Squeeze shoulder blades", "Extend arms"] },
-  { name: "T-Bar Row", category: "Middle Back", muscleGroup: "Back", equipment: "Barbell", difficulty: "Intermediate", instructions: ["Bent over position", "Pull bar to chest", "Lower with control"] },
-  { name: "Chest Supported Row", category: "Middle Back", muscleGroup: "Back", equipment: "Dumbbell", difficulty: "Beginner", instructions: ["Lie on incline bench", "Row dumbbells up", "Squeeze at top"] },
+  // BACK - TRAPS (formerly Middle Back, merged into Traps)
+  { name: "Seated Cable Row", category: "Traps", muscleGroup: "Back", equipment: "Cable", difficulty: "Beginner", instructions: ["Pull handle to torso", "Squeeze shoulder blades", "Extend arms"] },
+  { name: "T-Bar Row", category: "Traps", muscleGroup: "Back", equipment: "Barbell", difficulty: "Intermediate", instructions: ["Bent over position", "Pull bar to chest", "Lower with control"] },
+  { name: "Chest Supported Row", category: "Traps", muscleGroup: "Back", equipment: "Dumbbell", difficulty: "Beginner", instructions: ["Lie on incline bench", "Row dumbbells up", "Squeeze at top"] },
 
   // BACK - LOWER BACK
   { name: "Deadlift", category: "Lower Back", muscleGroup: "Back", equipment: "Barbell", difficulty: "Advanced", instructions: ["Hip-width stance", "Grip bar", "Lift by extending hips and knees", "Lower with control"] },

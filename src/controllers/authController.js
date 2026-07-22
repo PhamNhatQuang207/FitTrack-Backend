@@ -5,15 +5,26 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmailSmart');
 
+// Must stay in step with the "expires in 24 hours" copy in the verification email.
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
 const register = async (req, res) => {
     try {
         const { email, password, name } = req.body;
         const db = getDb();
 
-        // Check if user already exists
-        const userExists = await db.collection('users').findOne({ email });
-        if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+        // Every branch below answers with exactly this. Telling the caller that an
+        // address is already taken would let anyone enumerate the user base.
+        const genericResponse = {
+            message: 'Registration successful! Please check your email to verify your account.'
+        };
+
+        const existingUser = await db.collection('users').findOne({ email });
+
+        // Already registered and verified: do nothing at all. The real owner is
+        // untouched, and the caller can't tell this apart from a fresh signup.
+        if (existingUser && existingUser.isVerified) {
+            return res.status(201).json(genericResponse);
         }
 
         // Hash password
@@ -22,19 +33,28 @@ const register = async (req, res) => {
 
         // Generate verification token
         const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationTokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
 
-        // Create new user
-        const newUser = {
-            email,
-            password: hashedPassword,
-            name,
-            isVerified: false,
-            verificationToken,
-            createdAt: new Date()
-        };
+        if (existingUser) {
+            // Registered but never verified, so nobody has proven they own this
+            // address. Let the latest attempt claim it with a fresh token — this
+            // is also how a user whose link expired gets a new one.
+            await db.collection('users').updateOne(
+                { _id: existingUser._id },
+                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry } }
+            );
+        } else {
+            await db.collection('users').insertOne({
+                email,
+                password: hashedPassword,
+                name,
+                isVerified: false,
+                verificationToken,
+                verificationTokenExpiry,
+                createdAt: new Date()
+            });
+        }
 
-        const result = await db.collection('users').insertOne(newUser);
-        
         // Send verification email
         const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
         
@@ -119,10 +139,9 @@ const register = async (req, res) => {
             // Continue registration even if email fails
         }
         
-        res.status(201).json({ 
-            message: 'Registration successful! Please check your email to verify your account.',
-            userId: result.insertedId 
-        });
+        // No userId in the body: returning one only on the insert path would leak
+        // which branch ran, and hand out a real user id besides.
+        res.status(201).json(genericResponse);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -185,12 +204,19 @@ const verifyEmail = async (req, res) => {
             return res.status(200).json({ message: 'Email already verified. You can now log in.' });
         }
 
+        // Enforce the 24-hour lifetime the email promises. A token issued before
+        // expiry was tracked has no expiry field, and counts as expired; signing
+        // up again re-sends a fresh link.
+        if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
+            return res.status(400).json({ message: 'Invalid or expired verification token' });
+        }
+
         // Update user: set verified and remove token
         await db.collection('users').updateOne(
             { _id: user._id },
-            { 
+            {
                 $set: { isVerified: true },
-                $unset: { verificationToken: '' }
+                $unset: { verificationToken: '', verificationTokenExpiry: '' }
             }
         );
 

@@ -72,6 +72,9 @@ const exercises = [
   { name: "Glute Bridge", category: "Glutes", muscleGroup: "Legs", equipment: "Bodyweight", difficulty: "Beginner", instructions: ["Lie on back", "Thrust hips up", "Squeeze glutes"] },
   { name: "Cable Kickback", category: "Glutes", muscleGroup: "Legs", equipment: "Cable", difficulty: "Beginner", instructions: ["Attach ankle cuff", "Kick leg back", "Squeeze glute"] },
 
+  // ADDUCTOR
+  { name: "Hip Adduction", category: "Adductor", muscleGroup: "Legs", equipment: "Machine", difficulty: "Beginner", instructions: ["Sit with pads outside thighs", "Squeeze legs together", "Return with control"] },
+
   // CALVES
   { name: "Standing Calf Raise", category: "Calves", muscleGroup: "Legs", equipment: "Machine", difficulty: "Beginner", instructions: ["Stand on platform", "Raise up on toes", "Lower slowly"] },
   { name: "Seated Calf Raise", category: "Calves", muscleGroup: "Legs", equipment: "Machine", difficulty: "Beginner", instructions: ["Sit with weight on knees", "Raise heels", "Lower with control"] },

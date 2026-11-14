@@ -24,5 +24,27 @@ const authLimiter = rateLimit({
     skip: (req) => isDevelopment // Skip entirely in development
 });
 
+const aiChatLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: isDevelopment ? 10000 : 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        message: 'Too many AI chat requests, please try again after 15 minutes'
+    },
+    skip: (req) => isDevelopment
+});
+
+const mcpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: isDevelopment ? 10000 : 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        message: 'Too many MCP requests, please try again after 15 minutes'
+    },
+    skip: (req) => isDevelopment
+});
+
 // isDevelopment exported for unit testing of the fail-closed behaviour.
-module.exports = { limiter, authLimiter, isDevelopment };
+module.exports = { limiter, authLimiter, aiChatLimiter, mcpLimiter, isDevelopment };

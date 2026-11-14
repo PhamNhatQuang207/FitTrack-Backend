@@ -389,7 +389,10 @@ const applyDraftPlan = async (req, res) => {
         appliedPlanId = linkedPlanId;
       }
     } else {
-      // mode === 'create_schedule': create new weekly-plans template AND start new active weekly-schedules
+      // mode === 'create_schedule':
+      // - action === 'save_plan': only save template in weekly-plans (do not overwrite current weekly-schedules)
+      // - action === 'activate_schedule' (or default): save in weekly-plans AND start/replace active weekly-schedules
+      const requestedAction = req.body?.action || 'activate_schedule';
       const planDoc = {
         userId: userObjectId,
         name: plan.name,
@@ -401,51 +404,53 @@ const applyDraftPlan = async (req, res) => {
       const planInsert = await db.collection('weekly-plans').insertOne(planDoc);
       appliedPlanId = planInsert.insertedId.toString();
 
-      // Mark any prior active schedule for this user as completed/superseded so the new schedule becomes the active one
-      await db.collection('weekly-schedules').updateMany(
-        { userId: userObjectId, status: 'active' },
-        { $set: { status: 'completed', updatedAt: now } }
-      );
+      if (requestedAction !== 'save_plan') {
+        // Mark any prior active schedule for this user as completed/superseded so the new schedule becomes the active one
+        await db.collection('weekly-schedules').updateMany(
+          { userId: userObjectId, status: 'active' },
+          { $set: { status: 'completed', updatedAt: now } }
+        );
 
-      const scheduleDoc = {
-        userId: userObjectId,
-        weeklyPlanId: planInsert.insertedId,
-        weeklyPlanName: plan.name,
-        weekNumber,
-        year,
-        startDate: monday,
-        endDate: sunday,
-        status: 'active',
-        days: normalizedDays.map((day, index) => {
-          const dayDate = new Date(monday);
-          dayDate.setDate(dayDate.getDate() + index);
-          return {
-            dayOfWeek: day.dayOfWeek,
-            dayName: day.dayName,
-            date: dayDate,
-            isRestDay: day.isRestDay,
-            workout: day.isRestDay
-              ? null
-              : {
-                  name: day.workout.name,
-                  exercises: day.workout.exercises.map((ex) => ({
-                    ...ex,
+        const scheduleDoc = {
+          userId: userObjectId,
+          weeklyPlanId: planInsert.insertedId,
+          weeklyPlanName: plan.name,
+          weekNumber,
+          year,
+          startDate: monday,
+          endDate: sunday,
+          status: 'active',
+          days: normalizedDays.map((day, index) => {
+            const dayDate = new Date(monday);
+            dayDate.setDate(dayDate.getDate() + index);
+            return {
+              dayOfWeek: day.dayOfWeek,
+              dayName: day.dayName,
+              date: dayDate,
+              isRestDay: day.isRestDay,
+              workout: day.isRestDay
+                ? null
+                : {
+                    name: day.workout.name,
+                    exercises: day.workout.exercises.map((ex) => ({
+                      ...ex,
+                      isCompleted: false,
+                      actualSets: []
+                    })),
                     isCompleted: false,
-                    actualSets: []
-                  })),
-                  isCompleted: false,
-                  completedAt: null
-                }
-          };
-        }),
-        completedDays: 0,
-        totalWorkoutDays: normalizedDays.filter((d) => !d.isRestDay).length,
-        createdAt: now,
-        updatedAt: now
-      };
+                    completedAt: null
+                  }
+            };
+          }),
+          completedDays: 0,
+          totalWorkoutDays: normalizedDays.filter((d) => !d.isRestDay).length,
+          createdAt: now,
+          updatedAt: now
+        };
 
-      const scheduleInsert = await db.collection('weekly-schedules').insertOne(scheduleDoc);
-      appliedScheduleId = scheduleInsert.insertedId.toString();
+        const scheduleInsert = await db.collection('weekly-schedules').insertOne(scheduleDoc);
+        appliedScheduleId = scheduleInsert.insertedId.toString();
+      }
     }
 
     await db.collection('ai-conversations').updateOne(
@@ -464,7 +469,9 @@ const applyDraftPlan = async (req, res) => {
       message:
         mode === 'edit_schedule'
           ? 'Active weekly schedule updated successfully'
-          : 'New weekly plan and schedule started successfully',
+          : appliedScheduleId
+          ? 'New weekly plan and schedule started successfully'
+          : 'Weekly plan saved to library successfully',
       mode,
       planId: appliedPlanId,
       scheduleId: appliedScheduleId

@@ -83,16 +83,25 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
         break;
       }
 
-      // Append model functionCall turn
-      contents.push({
-        role: 'model',
-        parts: functionCalls.map((fc) => ({
-          functionCall: {
-            name: fc.name,
-            args: fc.args || {}
-          }
-        }))
-      });
+      // Append model functionCall turn — preserve rawCandidates[0].content so
+      // Gemini 3.x thought_signature and thought parts remain intact across tool rounds
+      const rawModelContent = turn.rawCandidates?.[0]?.content;
+      if (rawModelContent && Array.isArray(rawModelContent.parts) && rawModelContent.parts.length > 0) {
+        contents.push({
+          role: rawModelContent.role || 'model',
+          parts: rawModelContent.parts
+        });
+      } else {
+        contents.push({
+          role: 'model',
+          parts: functionCalls.map((fc) => ({
+            functionCall: {
+              name: fc.name,
+              args: fc.args || {}
+            }
+          }))
+        });
+      }
 
       const responseParts = [];
       for (const fc of functionCalls) {
@@ -104,6 +113,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
           loopGuard.recordToolResult(callName, true);
           responseParts.push({
             functionResponse: {
+              ...(fc.id ? { id: fc.id } : {}),
               name: callName,
               response: { error: dupCheck.reason }
             }
@@ -121,7 +131,9 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
 
         let parsedPayload = {};
         try {
-          parsedPayload = JSON.parse(mcpResult.content?.[0]?.text || '{}');
+          const parsed = JSON.parse(mcpResult.content?.[0]?.text || '{}');
+          parsedPayload =
+            typeof parsed === 'object' && parsed !== null ? parsed : { result: parsed };
         } catch {
           parsedPayload = { raw: mcpResult.content?.[0]?.text || '' };
         }
@@ -138,6 +150,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
 
         responseParts.push({
           functionResponse: {
+            ...(fc.id ? { id: fc.id } : {}),
             name: callName,
             response: parsedPayload
           }

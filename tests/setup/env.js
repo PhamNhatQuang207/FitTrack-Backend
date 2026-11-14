@@ -9,3 +9,5 @@ process.env.DB_NAME = 'fittrack_test';
 delete process.env.MONGO_URI;
 process.env.ADMIN_USERNAME = 'admin';
 process.env.ADMIN_PASSWORD = 'test-admin-password-123';
+process.env.GEMINI_API_KEY = 'test-gemini-api-key';
+process.env.GEMINI_MODEL = 'gemini-2.5-flash';

@@ -16,6 +16,7 @@ const {
   updateExercise,
   toggleExerciseStatus,
 } = require('../controllers/adminExerciseController');
+const { updateSiteConfig } = require('../controllers/siteConfigController');
 
 const router = express.Router();
 
@@ -78,6 +79,17 @@ router.patch(
   [check('isActive', 'isActive boolean is required').isBoolean()],
   validate,
   toggleExerciseStatus
+);
+
+router.put(
+  '/site-config',
+  [
+    check('heroBackgroundUrl').optional().isString(),
+    check('announcementBanner').optional().isString(),
+    check('featuredNote').optional().isString(),
+  ],
+  validate,
+  updateSiteConfig
 );
 
 module.exports = router;

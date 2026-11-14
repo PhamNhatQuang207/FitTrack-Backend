@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitTrack Admin</title>
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body>
+  <div id="login-view" class="card login-card">
+    <h1>FitTrack Admin</h1>
+    <p class="muted">Sign in with dedicated Admin credentials.</p>
+    <form id="login-form">
+      <label>Username <input type="text" id="login-username" required /></label>
+      <label>Password <input type="password" id="login-password" required /></label>
+      <button type="submit" class="btn-primary">Sign In</button>
+      <p id="login-error" class="error"></p>
+    </form>
+  </div>
+
+  <div id="dashboard-view" class="hidden">
+    <header class="topbar">
+      <strong>FitTrack Admin</strong>
+      <div class="topbar-actions">
+        <button id="tab-exercises" class="tab active" type="button">Exercises</button>
+        <button id="tab-groups" class="tab" type="button">Muscle Groups</button>
+        <button id="tab-config" class="tab" type="button">Site Content</button>
+        <button id="logout-btn" class="btn-secondary" type="button">Logout</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- TAB 1: EXERCISES -->
+      <section id="panel-exercises">
+        <div class="toolbar">
+          <input type="search" id="exercise-search" placeholder="Filter exercises..." />
+          <button id="new-exercise-btn" class="btn-primary" type="button">+ New Exercise</button>
+        </div>
+
+        <form id="exercise-form" class="card hidden">
+          <h3 id="exercise-form-title">New Exercise</h3>
+          <input type="hidden" id="ex-id" />
+          <div class="grid">
+            <label>Name <input type="text" id="ex-name" required /></label>
+            <label>Category (Muscle Group)
+              <select id="ex-category" required></select>
+            </label>
+            <label>Broad Muscle Group <input type="text" id="ex-muscle" placeholder="Chest, Back, Legs..." /></label>
+            <label>Equipment <input type="text" id="ex-equipment" /></label>
+            <label>Difficulty
+              <select id="ex-difficulty">
+                <option>Beginner</option>
+                <option>Intermediate</option>
+                <option>Advanced</option>
+              </select>
+            </label>
+            <label>Image URL <input type="url" id="ex-image" placeholder="https://..." /></label>
+          </div>
+          <label>Instructions (one step per line)
+            <textarea id="ex-instructions" rows="3"></textarea>
+          </label>
+          <div class="row-actions">
+            <button type="submit" class="btn-primary">Save</button>
+            <button type="button" id="cancel-exercise-btn" class="btn-secondary">Cancel</button>
+          </div>
+        </form>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Equipment</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="exercises-tbody"></tbody>
+        </table>
+      </section>
+
+      <!-- TAB 2: MUSCLE GROUPS -->
+      <section id="panel-groups" class="hidden">
+        <div class="card">
+          <h3>Add / Rename Muscle Group</h3>
+          <p class="muted">Renaming a muscle group automatically updates all exercises, workouts, sessions, and plans.</p>
+          <form id="group-form" class="grid">
+            <input type="hidden" id="grp-id" />
+            <label>Name <input type="text" id="grp-name" required /></label>
+            <label>Icon URL (optional) <input type="url" id="grp-icon" placeholder="https://..." /></label>
+            <div class="row-actions">
+              <button type="submit" class="btn-primary">Save Group</button>
+              <button type="button" id="cancel-group-btn" class="btn-secondary">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Slug</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="groups-tbody"></tbody>
+        </table>
+      </section>
+
+      <!-- TAB 3: SITE CONTENT -->
+      <section id="panel-config" class="hidden card">
+        <h2>Site Content & Backgrounds</h2>
+        <form id="config-form">
+          <label>Hero Background Image URL
+            <input type="url" id="cfg-hero-bg" placeholder="https://..." />
+          </label>
+          <img id="cfg-hero-preview" class="preview hidden" alt="Hero preview" />
+          <label>Announcement Banner
+            <input type="text" id="cfg-banner" />
+          </label>
+          <label>Featured Note
+            <textarea id="cfg-note" rows="3"></textarea>
+          </label>
+          <button type="submit" class="btn-primary">Save Config</button>
+          <span id="cfg-status" class="muted"></span>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

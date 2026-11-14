@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -37,7 +38,15 @@ app.use(cors({
 }));
 
 // Security Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'img-src': ["'self'", 'data:', 'https:'],
+    },
+  },
+}));
+app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.use('/api', limiter); // Apply global rate limit to API routes
 
 app.use(express.json());

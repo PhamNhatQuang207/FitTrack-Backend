@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FitTrack Admin // Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700;1,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/admin/styles.css" />
+</head>
+<body class="ft-page">
+  <div class="bg-blob bg-blob-lime"></div>
+  <div class="bg-blob bg-blob-orange"></div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- LOGIN VIEW -->
+  <div id="login-view" class="login-wrapper">
+    <div class="login-container animate-slide-up">
+      <div class="brand-header">
+        <div class="brand-logo-row">
+          <svg width="38" height="38" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="2" fill="#CCFF00" />
+            <text x="18" y="26" textAnchor="middle" fontFamily="Barlow Condensed, sans-serif" fontWeight="900" fontSize="22" fontStyle="italic" fill="#000">F</text>
+          </svg>
+          <span class="ft-title brand-title">FitTrack</span>
+          <span class="badge-orange">ADMIN</span>
+        </div>
+        <p class="brand-subtitle">// SYSTEM CONTROL &amp; CONTENT ENGINE</p>
+      </div>
+
+      <div class="ft-card ft-corner-tl ft-corner-br login-card">
+        <h1 class="ft-title card-heading">Operator Login</h1>
+        <p class="muted">Enter isolated administrator credentials to access the control plane.</p>
+
+        <div id="login-error" class="alert-error hidden"></div>
+
+        <form id="login-form" class="form-stack">
+          <div>
+            <label class="ft-label" for="login-username">Username</label>
+            <input type="text" id="login-username" class="ft-input" placeholder="admin" autocomplete="username" required />
+          </div>
+          <div>
+            <label class="ft-label" for="login-password">Password</label>
+            <input type="password" id="login-password" class="ft-input" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="ft-btn-primary w-full">Initialize Session</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboard-view" class="hidden">
+    <header class="ft-header">
+      <div class="header-inner">
+        <div class="brand-logo-row">
+          <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="2" fill="#CCFF00" />
+            <text x="18" y="26" textAnchor="middle" fontFamily="Barlow Condensed, sans-serif" fontWeight="900" fontSize="22" fontStyle="italic" fill="#000">F</text>
+          </svg>
+          <div>
+            <div class="brand-inline">
+              <span class="ft-title header-brand">FitTrack</span>
+              <span class="badge-lime">CONTROL CENTER</span>
+            </div>
+            <div class="mono-meta">// OPERATOR: <span id="admin-username-label">ADMIN</span></div>
+          </div>
+        </div>
+
+        <nav class="topbar-nav">
+          <button id="tab-exercises" class="nav-tab active" type="button">
+            <span class="tab-index">01</span> Exercises
+          </button>
+          <button id="tab-groups" class="nav-tab" type="button">
+            <span class="tab-index">02</span> Muscle Groups
+          </button>
+          <button id="tab-config" class="nav-tab" type="button">
+            <span class="tab-index">03</span> Site Content
+          </button>
+        </nav>
+
+        <div class="header-right">
+          <button id="logout-btn" class="ft-btn-ghost" type="button">Disconnect</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- KPI STAT STRIP -->
+      <section class="stats-grid">
+        <div class="ft-card stat-card">
+          <span class="ft-label">Total Catalogue</span>
+          <div class="stat-value-row">
+            <span id="stat-total-exercises" class="ft-stat-number">0</span>
+            <span class="badge-lime" id="stat-active-exercises">0 ACTIVE</span>
+          </div>
+        </div>
+        <div class="ft-card stat-card">
+          <span class="ft-label">Muscle Groups</span>
+          <div class="stat-value-row">
+            <span id="stat-total-groups" class="ft-stat-number">0</span>
+            <span class="badge-lime" id="stat-active-groups">0 ENABLED</span>
+          </div>
+        </div>
+        <div class="ft-card stat-card">
+          <span class="ft-label">Site Visual Theme</span>
+          <div class="stat-value-row">
+            <span id="stat-bg-mode" class="ft-stat-number stat-sm">DEFAULT</span>
+            <span class="badge-orange" id="stat-banner-mode">NO BANNER</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 1: EXERCISES -->
+      <section id="panel-exercises" class="panel animate-slide-up">
+        <div class="section-header">
+          <div>
+            <h2 class="ft-title section-title">Exercise Catalogue</h2>
+          </div>
+          <button id="new-exercise-btn" class="ft-btn-primary" type="button">+ Add Exercise</button>
+        </div>
+
+        <!-- Exercise Editor Form -->
+        <form id="exercise-form" class="ft-card ft-corner-tl ft-corner-br editor-card hidden">
+          <div class="editor-header">
+            <h3 id="exercise-form-title" class="ft-title editor-title">New Exercise</h3>
+            <span class="mono-meta">// CATALOGUE ENTRY</span>
+          </div>
+          <input type="hidden" id="ex-id" />
+          <div class="form-grid">
+            <div>
+              <label class="ft-label" for="ex-name">Exercise Name *</label>
+              <input type="text" id="ex-name" class="ft-input" placeholder="e.g. Incline Cable Fly" required />
+            </div>
+            <div>
+              <label class="ft-label" for="ex-category">Target Muscle Group *</label>
+              <select id="ex-category" class="ft-input" required></select>
+            </div>
+            <div>
+              <label class="ft-label" for="ex-muscle">Broad Region</label>
+              <input type="text" id="ex-muscle" class="ft-input" placeholder="Chest, Back, Legs, Arms..." />
+            </div>
+            <div>
+              <label class="ft-label" for="ex-equipment">Equipment</label>
+              <input type="text" id="ex-equipment" class="ft-input" placeholder="Barbell, Dumbbell, Cable, Machine..." />
+            </div>
+            <div>
+              <label class="ft-label" for="ex-difficulty">Difficulty</label>
+              <select id="ex-difficulty" class="ft-input">
+                <option>Beginner</option>
+                <option>Intermediate</option>
+                <option>Advanced</option>
+              </select>
+            </div>
+            <div>
+              <label class="ft-label" for="ex-image">Media / Image URL</label>
+              <input type="url" id="ex-image" class="ft-input" placeholder="https://..." />
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="ft-label" for="ex-instructions">Execution Instructions (one step per line)</label>
+            <textarea id="ex-instructions" class="ft-input" rows="3" placeholder="Step 1&#10;Step 2"></textarea>
+          </div>
+          <div class="editor-actions">
+            <button type="submit" class="ft-btn-primary">Commit Changes</button>
+            <button type="button" id="cancel-exercise-btn" class="ft-btn-ghost">Cancel</button>
+          </div>
+        </form>
+
+        <!-- Filter Toolbar -->
+        <div class="ft-card toolbar-card">
+          <div class="toolbar-controls">
+            <div class="search-box">
+              <label class="ft-label" for="exercise-search">Search Name</label>
+              <input type="search" id="exercise-search" class="ft-input" placeholder="Search bench, squat, curl..." />
+            </div>
+            <div class="filter-box">
+              <label class="ft-label" for="exercise-category-filter">Muscle Group</label>
+              <select id="exercise-category-filter" class="ft-input">
+                <option value="">All Muscle Groups</option>
+              </select>
+            </div>
+            <div class="filter-box">
+              <label class="ft-label" for="exercise-status-filter">Visibility</label>
+              <select id="exercise-status-filter" class="ft-input">
+                <option value="all">All Status</option>
+                <option value="active">Active Only</option>
+                <option value="hidden">Hidden Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="toolbar-footer">
+            <span id="exercise-count-label" class="mono-meta">Showing 0 exercises</span>
+          </div>
+        </div>
+
+        <div class="ft-card table-card">
+          <table class="ft-table">
+            <thead>
+              <tr>
+                <th>Exercise Name</th>
+                <th>Muscle Group</th>
+                <th>Equipment</th>
+                <th>Status</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="exercises-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 2: MUSCLE GROUPS -->
+      <section id="panel-groups" class="panel hidden animate-slide-up">
+        <div class="section-header">
+          <div>
+            <h2 class="ft-title section-title">Muscle Groups &amp; Cascade Engine</h2>
+          </div>
+        </div>
+
+        <div class="two-col-grid">
+          <!-- Add / Rename Card -->
+          <div class="ft-card ft-corner-tl ft-corner-br editor-card">
+            <div class="editor-header">
+              <h3 id="group-form-title" class="ft-title editor-title">Add / Rename Muscle Group</h3>
+              <span class="badge-lime">5-COLLECTION SYNC</span>
+            </div>
+            <p class="muted">Renaming an existing group automatically rewrites its category across all exercises, workouts, logged sessions, weekly plans, and schedules.</p>
+            <form id="group-form" class="form-stack">
+              <input type="hidden" id="grp-id" />
+              <div>
+                <label class="ft-label" for="grp-name">Muscle Group Name *</label>
+                <input type="text" id="grp-name" class="ft-input" placeholder="e.g. Rear Delts" required />
+              </div>
+              <div>
+                <label class="ft-label" for="grp-icon">Custom Icon URL (optional — defaults to built-in icon)</label>
+                <input type="url" id="grp-icon" class="ft-input" placeholder="https://..." />
+              </div>
+              <div class="editor-actions">
+                <button type="submit" class="ft-btn-primary" id="grp-submit-btn">Save Muscle Group</button>
+                <button type="button" id="cancel-group-btn" class="ft-btn-ghost">Reset Form</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Merge Card -->
+          <div class="ft-card-orange editor-card">
+            <div class="editor-header">
+              <h3 class="ft-title editor-title">Merge Muscle Groups</h3>
+              <span class="badge-orange">DESTRUCTIVE MIGRATION</span>
+            </div>
+            <p class="muted">Reassigns every exercise and historical user workout from the source group into the target group, then deletes the source group.</p>
+            <form id="merge-form" class="form-stack">
+              <div>
+                <label class="ft-label" for="merge-source">Source Group (will be removed)</label>
+                <select id="merge-source" class="ft-input" required></select>
+              </div>
+              <div>
+                <label class="ft-label" for="merge-target">Target Group (destination)</label>
+                <select id="merge-target" class="ft-input" required></select>
+              </div>
+              <div class="editor-actions">
+                <button type="submit" class="ft-btn-orange">Execute Merge</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="ft-card table-card">
+          <table class="ft-table">
+            <thead>
+              <tr>
+                <th>Muscle Group</th>
+                <th>API Slug</th>
+                <th>Exercises Count</th>
+                <th>Status</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="groups-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 3: SITE CONTENT -->
+      <section id="panel-config" class="panel hidden animate-slide-up">
+        <div class="section-header">
+          <div>
+            <h2 class="ft-title section-title">Site Content &amp; Visuals</h2>
+          </div>
+        </div>
+
+        <div class="two-col-grid">
+          <div class="ft-card ft-corner-tl ft-corner-br editor-card">
+            <div class="editor-header">
+              <h3 class="ft-title editor-title">Global Configuration</h3>
+              <span id="cfg-status" class="mono-meta">READY</span>
+            </div>
+            <form id="config-form" class="form-stack">
+              <div>
+                <label class="ft-label" for="cfg-hero-bg">Hero Background Image URL</label>
+                <input type="url" id="cfg-hero-bg" class="ft-input" placeholder="Leave blank to use default FitTrack gym background" />
+              </div>
+              <div>
+                <label class="ft-label" for="cfg-banner">Top Announcement Banner</label>
+                <input type="text" id="cfg-banner" class="ft-input" placeholder="e.g. NEW ADDUCTOR &amp; CABLE EXERCISES NOW LIVE" />
+              </div>
+              <div>
+                <label class="ft-label" for="cfg-note">Featured System Note</label>
+                <textarea id="cfg-note" class="ft-input" rows="3" placeholder="Internal or featured note..."></textarea>
+              </div>
+              <div class="editor-actions">
+                <button type="submit" class="ft-btn-primary">Publish Configuration</button>
+                <button type="button" id="reset-bg-btn" class="ft-btn-ghost">Use Default Background</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="ft-card editor-card">
+            <div class="editor-header">
+              <h3 class="ft-title editor-title">Live Viewport Preview</h3>
+              <span class="badge-lime">REAL-TIME</span>
+            </div>
+            <div class="viewport-preview" id="viewport-preview-box">
+              <div id="preview-banner" class="preview-banner hidden"></div>
+              <div class="preview-overlay">
+                <span class="ft-label">// CLIENT VIEWPORT SIMULATION</span>
+                <h4 class="ft-title preview-heading">TRAIN SMART. TRACK HARD.</h4>
+                <p id="preview-note" class="muted">Default FitTrack dark cyber-grid background active.</p>
+                <img id="cfg-hero-preview" class="preview-img hidden" alt="Hero background preview" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/admin/app.js"></script>
+</body>
+</html>

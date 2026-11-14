@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./config/swagger');
@@ -14,6 +15,9 @@ const workoutSessionRoutes = require('./routes/workoutSessionRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const weeklyPlanRoutes = require('./routes/weeklyPlanRoutes');
 const weeklyScheduleRoutes = require('./routes/weeklyScheduleRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const { getPublicMuscleGroups } = require('./controllers/muscleGroupController');
+const { getPublicSiteConfig } = require('./controllers/siteConfigController');
 dotenv.config();
 const app = express();
 
@@ -34,7 +38,17 @@ app.use(cors({
 }));
 
 // Security Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'img-src': ["'self'", 'data:', 'https:', 'http:'],
+      'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    },
+  },
+}));
+app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.use('/api', limiter); // Apply global rate limit to API routes
 
 app.use(express.json());
@@ -62,6 +76,9 @@ app.use('/api/workout-sessions', workoutSessionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/weekly-plans', weeklyPlanRoutes);
 app.use('/api/weekly-schedules', weeklyScheduleRoutes);
+app.get('/api/muscle-groups', getPublicMuscleGroups);
+app.get('/api/site-config', getPublicSiteConfig);
+app.use('/api/admin', adminRoutes);
 const startServer = async () => {
   await connectDB();
   const PORT = process.env.PORT || 5000;

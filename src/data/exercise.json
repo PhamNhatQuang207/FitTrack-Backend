@@ -13,7 +13,6 @@
   {"name":"Smith Machine Calf Raise","category":"Calves"},
   {"name":"Machine seated calf raise","category":"Calves"},
   {"name":"Knee Circles","category":"Calves"},
-  {"name":"Front Raise And Pullover","category":"Chest"},
   {"name":"Pushups","category":"Chest"},
   {"name":"Single-Arm Push-Up","category":"Chest"},
   {"name":"Machine chest press","category":"Chest"},
@@ -180,5 +179,8 @@
   {"name":"Captain's Chair Leg Raise","category":"Abdominals"},
   {"name":"Cable Crunch","category":"Abdominals"},
   {"name":"Bicycle Crunch","category":"Abdominals"},
-  {"name":"Hip Adduction","category":"Adductor"}
+  {"name":"Hip Adduction","category":"Adductor"},
+  {"name":"Incline Machine Chest Press","category":"Chest"},
+  {"name":"Hack squat","category":"Quadriceps"},
+  {"name":"Machine shoulder press","category":"Shoulders"}
 ]

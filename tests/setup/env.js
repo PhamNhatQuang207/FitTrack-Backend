@@ -7,3 +7,5 @@ process.env.DB_NAME = 'fittrack_test';
 // MONGO_URI is set at runtime by tests/setup/testDb.js once the in-memory
 // server has a port. We clear any inherited value here as a safety net.
 delete process.env.MONGO_URI;
+process.env.ADMIN_USERNAME = 'admin';
+process.env.ADMIN_PASSWORD = 'test-admin-password-123';

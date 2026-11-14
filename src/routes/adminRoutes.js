@@ -10,6 +10,12 @@ const {
   updateMuscleGroup,
   mergeMuscleGroup,
 } = require('../controllers/muscleGroupController');
+const {
+  listExercises,
+  createExercise,
+  updateExercise,
+  toggleExerciseStatus,
+} = require('../controllers/adminExerciseController');
 
 const router = express.Router();
 
@@ -46,6 +52,32 @@ router.post(
   [check('targetId', 'targetId is required').isString().notEmpty()],
   validate,
   mergeMuscleGroup
+);
+
+router.get('/exercises', listExercises);
+router.post(
+  '/exercises',
+  [
+    check('name', 'Name is required').isString().trim().notEmpty(),
+    check('category', 'Category is required').isString().trim().notEmpty(),
+  ],
+  validate,
+  createExercise
+);
+router.put(
+  '/exercises/:id',
+  [
+    check('name').optional().isString().trim().notEmpty(),
+    check('category').optional().isString().trim().notEmpty(),
+  ],
+  validate,
+  updateExercise
+);
+router.patch(
+  '/exercises/:id/status',
+  [check('isActive', 'isActive boolean is required').isBoolean()],
+  validate,
+  toggleExerciseStatus
 );
 
 module.exports = router;

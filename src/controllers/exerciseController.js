@@ -5,7 +5,7 @@ const { ObjectId } = require('mongodb');
 const getAllExercises = async (req, res) => {
     try {
         const db = getDb();
-        const exercises = await db.collection('exercises').find({}).toArray();
+        const exercises = await db.collection('exercises').find({ isActive: { $ne: false } }).toArray();
         
         res.json(exercises.map(ex => ({
             ...ex,
@@ -30,7 +30,7 @@ const getExercisesByCategory = async (req, res) => {
             .join(' ');
         
         const exercises = await db.collection('exercises')
-            .find({ category: formattedCategory })
+            .find({ category: formattedCategory, isActive: { $ne: false } })
             .toArray();
         
         res.json(exercises.map(ex => ({
@@ -68,7 +68,8 @@ const searchExercises = async (req, res) => {
         // Match the escaped input literally (case-insensitive)
         const exercises = await db.collection('exercises')
             .find({
-                name: { $regex: escapeRegex(trimmed), $options: 'i' }
+                name: { $regex: escapeRegex(trimmed), $options: 'i' },
+                isActive: { $ne: false }
             })
             .toArray();
         

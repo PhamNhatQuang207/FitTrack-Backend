@@ -361,6 +361,63 @@ function createFitTrackMcpServer({ db, userId }) {
     }
   );
 
+  // 7. update_weekly_plan
+  server.tool(
+    'update_weekly_plan',
+    'Build a validated 7-day Draft Plan Update payload (mode: update_plan) to modify an existing saved weekly plan template in weekly-plans by planId without altering the active weekly schedule.',
+    {
+      planId: z.string(),
+      name: z.string().min(1).max(120).optional(),
+      description: z.string().max(400).optional(),
+      days: z.array(daySchema).length(7)
+    },
+    async ({ planId, name, description, days }) => {
+      if (!ObjectId.isValid(planId)) {
+        return toMcpJson({ error: 'Invalid planId format.' }, true);
+      }
+
+      const existingPlan = await db.collection('weekly-plans').findOne({
+        _id: new ObjectId(planId),
+        userId: userObjectId
+      });
+
+      if (!existingPlan) {
+        return toMcpJson(
+          { error: 'Weekly plan template not found for this user. Call get_weekly_plans first.' },
+          true
+        );
+      }
+
+      const check = await validateAndNormalizeDays({ db, days });
+      if (!check.ok) {
+        return toMcpJson({ error: check.error }, true);
+      }
+
+      const draftPlan = {
+        mode: 'update_plan',
+        targetScheduleId: null,
+        targetPlanId: existingPlan._id.toString(),
+        targetPlanName: existingPlan.name,
+        plan: {
+          name: (name || existingPlan.name).trim(),
+          description:
+            description !== undefined ? description.trim() : existingPlan.description || '',
+          days: check.days
+        },
+        appliedScheduleId: null,
+        appliedPlanId: null,
+        appliedAt: null
+      };
+
+      return toMcpJson({
+        status: 'draft_ready_for_confirmation',
+        message:
+          'Draft update for saved weekly plan template prepared. Ask the user to review and click Update Plan in Library in the chat card.',
+        draftPlan
+      });
+    }
+  );
+
   // 7. save_user_memory
   server.tool(
     'save_user_memory',

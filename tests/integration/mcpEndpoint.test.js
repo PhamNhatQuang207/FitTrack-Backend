@@ -64,7 +64,8 @@ describe('FitTrack MCP Server & /mcp Endpoint (integration)', () => {
       'get_weekly_plans',
       'propose_weekly_plan',
       'save_user_memory',
-      'search_exercises'
+      'search_exercises',
+      'update_weekly_plan'
     ]);
 
     await client.close();

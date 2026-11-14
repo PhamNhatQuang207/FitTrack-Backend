@@ -374,8 +374,13 @@ const applyDraftPlan = async (req, res) => {
 
       appliedScheduleId = activeSchedule._id.toString();
 
+      const requestedAction = req.body?.action || 'update_schedule_and_plan';
       const linkedPlanId = targetPlanId || activeSchedule.weeklyPlanId?.toString();
-      if (linkedPlanId && ObjectId.isValid(linkedPlanId)) {
+      if (
+        requestedAction !== 'update_schedule_only' &&
+        linkedPlanId &&
+        ObjectId.isValid(linkedPlanId)
+      ) {
         await db.collection('weekly-plans').updateOne(
           { _id: new ObjectId(linkedPlanId), userId: userObjectId },
           {
@@ -388,6 +393,25 @@ const applyDraftPlan = async (req, res) => {
         );
         appliedPlanId = linkedPlanId;
       }
+    } else if (mode === 'update_plan') {
+      if (!targetPlanId || !ObjectId.isValid(targetPlanId)) {
+        return res.status(400).json({ message: 'Invalid targetPlanId for update_plan' });
+      }
+      const updateRes = await db.collection('weekly-plans').updateOne(
+        { _id: new ObjectId(targetPlanId), userId: userObjectId },
+        {
+          $set: {
+            name: plan.name,
+            description: plan.description || '',
+            days: normalizedDays,
+            updatedAt: now
+          }
+        }
+      );
+      if (updateRes.matchedCount === 0) {
+        return res.status(404).json({ message: 'Weekly plan template not found' });
+      }
+      appliedPlanId = targetPlanId;
     } else {
       // mode === 'create_schedule':
       // - action === 'save_plan': only save template in weekly-plans (do not overwrite current weekly-schedules)

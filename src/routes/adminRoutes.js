@@ -1,0 +1,51 @@
+const express = require('express');
+const { check } = require('express-validator');
+const adminMiddleware = require('../middleware/adminMiddleware');
+const { authLimiter } = require('../middleware/rateLimiter');
+const validate = require('../middleware/validate');
+const { adminLogin } = require('../controllers/adminAuthController');
+const {
+  listAdminMuscleGroups,
+  createMuscleGroup,
+  updateMuscleGroup,
+  mergeMuscleGroup,
+} = require('../controllers/muscleGroupController');
+
+const router = express.Router();
+
+// Public admin login endpoint
+router.post(
+  '/login',
+  authLimiter,
+  [
+    check('username', 'Username is required').isString().notEmpty(),
+    check('password', 'Password is required').isString().notEmpty(),
+  ],
+  validate,
+  adminLogin
+);
+
+// Protected admin endpoints below
+router.use(adminMiddleware);
+
+router.get('/muscle-groups', listAdminMuscleGroups);
+router.post(
+  '/muscle-groups',
+  [check('name', 'Name is required').isString().trim().notEmpty()],
+  validate,
+  createMuscleGroup
+);
+router.put(
+  '/muscle-groups/:id',
+  [check('name').optional().isString().trim().notEmpty()],
+  validate,
+  updateMuscleGroup
+);
+router.post(
+  '/muscle-groups/:id/merge',
+  [check('targetId', 'targetId is required').isString().notEmpty()],
+  validate,
+  mergeMuscleGroup
+);
+
+module.exports = router;

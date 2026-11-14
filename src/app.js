@@ -14,6 +14,8 @@ const workoutSessionRoutes = require('./routes/workoutSessionRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const weeklyPlanRoutes = require('./routes/weeklyPlanRoutes');
 const weeklyScheduleRoutes = require('./routes/weeklyScheduleRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const { getPublicMuscleGroups } = require('./controllers/muscleGroupController');
 dotenv.config();
 const app = express();
 
@@ -62,6 +64,8 @@ app.use('/api/workout-sessions', workoutSessionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/weekly-plans', weeklyPlanRoutes);
 app.use('/api/weekly-schedules', weeklyScheduleRoutes);
+app.get('/api/muscle-groups', getPublicMuscleGroups);
+app.use('/api/admin', adminRoutes);
 const startServer = async () => {
   await connectDB();
   const PORT = process.env.PORT || 5000;

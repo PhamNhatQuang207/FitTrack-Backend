@@ -4,6 +4,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmailSmart');
+const verifyGoogleToken = require('../utils/verifyGoogleToken');
+
+const escapeEmailRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Must stay in step with the "expires in 24 hours" copy in the verification email.
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -164,6 +167,9 @@ const login = async (req, res) => {
         }
 
         // Check password
+        if (!user.password) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
@@ -236,6 +242,10 @@ const requestPasswordReset = async (req, res) => {
         const user = await db.collection('users').findOne({ email });
         if (!user) {
             // Don't reveal if user exists or not for security
+            return res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
+        }
+
+        if (!user.password) {
             return res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
         }
 
@@ -380,4 +390,70 @@ const resetPassword = async (req, res) => {
     }
 };
 
-module.exports = { register, login, verifyEmail, requestPasswordReset, resetPassword };
+const googleLogin = async (req, res) => {
+    try {
+        const { idToken } = req.body;
+        let payload;
+        try {
+            payload = await verifyGoogleToken(idToken);
+        } catch {
+            return res.status(401).json({ message: 'Invalid Google token' });
+        }
+
+        if (!payload || !payload.email || !payload.email_verified) {
+            return res.status(401).json({ message: 'Google account email is not verified' });
+        }
+
+        const email = payload.email.trim().toLowerCase();
+        const name = payload.name || email.split('@')[0];
+        const googleId = payload.sub;
+        const db = getDb();
+
+        let user = await db.collection('users').findOne({
+            email: { $regex: `^${escapeEmailRegex(email)}$`, $options: 'i' }
+        });
+
+        if (!user) {
+            const newUser = {
+                email,
+                name,
+                googleId,
+                authProvider: 'google',
+                isVerified: true,
+                createdAt: new Date()
+            };
+            const { insertedId } = await db.collection('users').insertOne(newUser);
+            user = { ...newUser, _id: insertedId };
+        } else if (!user.isVerified) {
+            await db.collection('users').updateOne(
+                { _id: user._id },
+                {
+                    $set: { isVerified: true, googleId, name: user.name || name },
+                    $unset: { password: '', verificationToken: '', verificationTokenExpiry: '' }
+                }
+            );
+        } else if (!user.googleId) {
+            await db.collection('users').updateOne(
+                { _id: user._id },
+                { $set: { googleId } }
+            );
+        }
+
+        const token = jwt.sign(
+            { userId: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            message: 'Login successful',
+            token,
+            userId: user._id,
+            name: user.name
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { register, login, googleLogin, verifyEmail, requestPasswordReset, resetPassword };

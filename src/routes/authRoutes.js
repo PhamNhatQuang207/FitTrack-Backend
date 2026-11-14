@@ -3,7 +3,7 @@ const router = express.Router();
 const { check } = require('express-validator');
 const validate = require('../middleware/validate');
 const { authLimiter } = require('../middleware/rateLimiter');
-const { register, login, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
+const { register, login, googleLogin, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
 
 /**
  * @swagger
@@ -281,6 +281,13 @@ router.post('/reset-password/:token',
     ],
     validate,
     resetPassword
+);
+
+router.post('/google',
+    authLimiter,
+    [check('idToken', 'Google ID token is required').isString().notEmpty()],
+    validate,
+    googleLogin
 );
 
 module.exports = router;

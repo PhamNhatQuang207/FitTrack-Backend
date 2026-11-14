@@ -9,7 +9,10 @@ const {
   deleteConversation,
   getMemories,
   deleteMemoryById,
-  applyDraftPlan
+  applyDraftPlan,
+  getMcpKeyStatus,
+  generateMcpKey,
+  revokeMcpKey
 } = require('../controllers/aiController');
 
 router.use(authMiddleware);
@@ -22,5 +25,9 @@ router.post('/conversations/:id/messages/:messageId/apply-plan', applyDraftPlan)
 
 router.get('/memories', getMemories);
 router.delete('/memories/:id', deleteMemoryById);
+
+router.get('/mcp-key', getMcpKeyStatus);
+router.post('/mcp-key', generateMcpKey);
+router.delete('/mcp-key', revokeMcpKey);
 
 module.exports = router;

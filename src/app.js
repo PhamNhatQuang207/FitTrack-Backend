@@ -9,6 +9,7 @@ const authRoutes = require('./routes/authRoutes');
 const helmet = require('helmet');
 const { limiter, mcpLimiter } = require('./middleware/rateLimiter');
 const authMiddleware = require('./middleware/authMiddleware');
+const mcpAuthMiddleware = require('./middleware/mcpAuthMiddleware');
 const { mcpHttpHandler } = require('./mcp/mcpHttpHandler');
 const userRoutes = require('./routes/userRoutes');
 const workoutRoutes = require('./routes/workoutRoutes');
@@ -37,7 +38,7 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'X-Mcp-Api-Key']
 }));
 
 // Security Middleware
@@ -57,7 +58,7 @@ app.use('/api', limiter); // Apply global rate limit to API routes
 app.use(express.json());
 
 // MCP HTTP transport (Streamable HTTP)
-app.all('/mcp', authMiddleware, mcpLimiter, mcpHttpHandler);
+app.all('/mcp', mcpAuthMiddleware, mcpLimiter, mcpHttpHandler);
 
 // Health check endpoint for Render
 app.get('/api/health', (req, res) => {

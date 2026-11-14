@@ -123,7 +123,7 @@ function createFitTrackMcpServer({ db, userId }) {
       let totalVolume = 0;
       const categoryCounts = {};
       const exerciseProgression = [];
-      const regex = exerciseName ? new RegExp(escapeRegex(exerciseName.trim()), 'i') : null;
+      const regex = exerciseName?.trim() ? new RegExp(escapeRegex(exerciseName.trim()), 'i') : null;
 
       for (const s of sessions) {
         for (const ex of s.exercises || []) {

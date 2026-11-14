@@ -184,4 +184,153 @@ describe('FitTrack MCP Server & /mcp Endpoint (integration)', () => {
     await client.close();
     await mcpServer.close();
   });
+
+  test('executes get_user_profile, get_progress_analytics, and get_weekly_plans scoped to userId', async () => {
+    const { userId } = await createUserAndToken(db);
+
+    // Seed profile data
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          age: 28,
+          sex: 'male',
+          height: 178,
+          weightHistory: [{ weight: 75, date: new Date() }],
+          bodyFatHistory: [{ bodyFat: 15, date: new Date() }]
+        }
+      }
+    );
+
+    // Seed a completed workout session
+    await db.collection('workout-sessions').insertOne({
+      userId: new ObjectId(userId),
+      status: 'completed',
+      date: new Date(),
+      exercises: [
+        {
+          exerciseName: 'Bench Press',
+          category: 'Chest',
+          actualSets: [{ weight: 80, reps: 10 }]
+        }
+      ]
+    });
+
+    const { client, mcpServer } = await connectInMemoryClient(userId);
+
+    // 1. get_user_profile
+    const profileRes = await client.callTool({
+      name: 'get_user_profile',
+      arguments: {}
+    });
+    expect(profileRes.isError).toBeFalsy();
+    const profileData = JSON.parse(profileRes.content[0].text);
+    expect(profileData.age).toBe(28);
+    expect(profileData.sex).toBe('male');
+    expect(profileData.latestWeight.weight).toBe(75);
+
+    // 2. get_progress_analytics
+    const analyticsRes = await client.callTool({
+      name: 'get_progress_analytics',
+      arguments: { weeksBack: 4, exerciseName: 'Bench Press' }
+    });
+    expect(analyticsRes.isError).toBeFalsy();
+    const analyticsData = JSON.parse(analyticsRes.content[0].text);
+    expect(analyticsData.completedSessionsCount).toBe(1);
+    expect(analyticsData.totalVolume).toBe(800);
+    expect(analyticsData.exerciseProgression).toHaveLength(1);
+    expect(analyticsData.exerciseProgression[0].exerciseName).toBe('Bench Press');
+
+    // 3. get_weekly_plans
+    const plansRes = await client.callTool({
+      name: 'get_weekly_plans',
+      arguments: {}
+    });
+    expect(plansRes.isError).toBeFalsy();
+    const plansData = JSON.parse(plansRes.content[0].text);
+    expect(Array.isArray(plansData.plans)).toBe(true);
+
+    await client.close();
+    await mcpServer.close();
+  });
+
+  test('MCP Personal Access Key lifecycle (/api/ai/mcp-key) and /mcp authentication with ftk_ token', async () => {
+    const { token } = await createUserAndToken(db);
+
+    // 1. Initial status -> hasKey: false
+    const initialStatus = await request(app)
+      .get('/api/ai/mcp-key')
+      .set('Authorization', `Bearer ${token}`);
+    expect(initialStatus.status).toBe(200);
+    expect(initialStatus.body.hasKey).toBe(false);
+    expect(initialStatus.body.keyPrefix).toBeNull();
+    expect(initialStatus.body.createdAt).toBeNull();
+
+    // 2. Generate MCP key -> 201 with raw ftk_ key
+    const genRes = await request(app)
+      .post('/api/ai/mcp-key')
+      .set('Authorization', `Bearer ${token}`);
+    expect(genRes.status).toBe(201);
+    expect(genRes.body.apiKey).toMatch(/^ftk_[a-f0-9]{48}$/);
+    expect(genRes.body.keyPrefix).toMatch(/^ftk_[a-f0-9]{8}\.\.\.$/);
+    expect(genRes.body.createdAt).toBeDefined();
+
+    const apiKey = genRes.body.apiKey;
+
+    // 3. Status after generation -> hasKey: true
+    const updatedStatus = await request(app)
+      .get('/api/ai/mcp-key')
+      .set('Authorization', `Bearer ${token}`);
+    expect(updatedStatus.status).toBe(200);
+    expect(updatedStatus.body.hasKey).toBe(true);
+    expect(updatedStatus.body.keyPrefix).toBe(genRes.body.keyPrefix);
+
+    // 4. Authenticate /mcp via Authorization: Bearer ftk_...
+    const bearerRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 10, method: 'tools/list' });
+    expect(bearerRes.status).toBe(200);
+    expect(bearerRes.text).toContain('"tools"');
+
+    // 5. Authenticate /mcp via x-mcp-api-key header
+    const customHeaderRes = await request(app)
+      .post('/mcp')
+      .set('x-mcp-api-key', apiKey)
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 11, method: 'tools/list' });
+    expect(customHeaderRes.status).toBe(200);
+    expect(customHeaderRes.text).toContain('"tools"');
+
+    // 6. Invalid / tampered ftk_ key rejected with 401
+    const badKeyRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', 'Bearer ftk_000000000000000000000000000000000000000000000000')
+      .send({ jsonrpc: '2.0', id: 12, method: 'tools/list' });
+    expect(badKeyRes.status).toBe(401);
+    expect(badKeyRes.body.message).toBe('Invalid or revoked MCP API key');
+
+    // 7. Revoke MCP key -> 200
+    const revokeRes = await request(app)
+      .delete('/api/ai/mcp-key')
+      .set('Authorization', `Bearer ${token}`);
+    expect(revokeRes.status).toBe(200);
+    expect(revokeRes.body.message).toBe('MCP API key revoked successfully');
+
+    // Status after revoke -> hasKey: false
+    const revokedStatus = await request(app)
+      .get('/api/ai/mcp-key')
+      .set('Authorization', `Bearer ${token}`);
+    expect(revokedStatus.status).toBe(200);
+    expect(revokedStatus.body.hasKey).toBe(false);
+
+    // 8. Subsequent /mcp request with revoked key returns 401
+    const revokedMcpRes = await request(app)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${apiKey}`)
+      .send({ jsonrpc: '2.0', id: 13, method: 'tools/list' });
+    expect(revokedMcpRes.status).toBe(401);
+    expect(revokedMcpRes.body.message).toBe('Invalid or revoked MCP API key');
+  });
 });

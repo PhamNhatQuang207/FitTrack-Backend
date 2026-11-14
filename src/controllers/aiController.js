@@ -474,6 +474,74 @@ const applyDraftPlan = async (req, res) => {
   }
 };
 
+const getMcpKeyStatus = async (req, res) => {
+  try {
+    const db = getDb();
+    const user = await db.collection('users').findOne(
+      { _id: new ObjectId(req.userId) },
+      { projection: { mcpApiKeyHash: 1, mcpApiKeyPrefix: 1, mcpApiKeyCreatedAt: 1 } }
+    );
+    return res.status(200).json({
+      hasKey: Boolean(user?.mcpApiKeyHash),
+      keyPrefix: user?.mcpApiKeyPrefix || null,
+      createdAt: user?.mcpApiKeyCreatedAt || null
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const generateMcpKey = async (req, res) => {
+  try {
+    const rawKey = 'ftk_' + crypto.randomBytes(24).toString('hex');
+    const hash = crypto.createHash('sha256').update(rawKey).digest('hex');
+    const keyPrefix = rawKey.slice(0, 12) + '...';
+    const now = new Date();
+
+    const db = getDb();
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.userId) },
+      {
+        $set: {
+          mcpApiKeyHash: hash,
+          mcpApiKeyPrefix: keyPrefix,
+          mcpApiKeyCreatedAt: now
+        }
+      }
+    );
+
+    return res.status(201).json({
+      apiKey: rawKey,
+      keyPrefix,
+      createdAt: now
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const revokeMcpKey = async (req, res) => {
+  try {
+    const db = getDb();
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.userId) },
+      {
+        $unset: {
+          mcpApiKeyHash: '',
+          mcpApiKeyPrefix: '',
+          mcpApiKeyCreatedAt: ''
+        }
+      }
+    );
+
+    return res.status(200).json({
+      message: 'MCP API key revoked successfully'
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   chatWithAi,
   getConversations,
@@ -481,5 +549,8 @@ module.exports = {
   deleteConversation,
   getMemories,
   deleteMemoryById,
-  applyDraftPlan
+  applyDraftPlan,
+  getMcpKeyStatus,
+  generateMcpKey,
+  revokeMcpKey
 };

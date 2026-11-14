@@ -1,7 +1,7 @@
 # FitTrack AI Assistant & MCP Server Design
 
 **Date:** 2026-11-14
-**Status:** Draft for review
+**Status:** Approved
 **Branch:** `feat/ai-assistant-mcp` (both `server` and `client`)
 
 ---
@@ -60,11 +60,11 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
 | Tool Name | Purpose | Input Schema (Zod) | Side Effects / Guards |
 |---|---|---|---|
 | `get_user_profile` | Read body metrics & profile | `{}` | Read-only from `users` (`name`, `age`, `sex`, `height`, latest `weightHistory`, `bodyFatHistory`) |
-| `get_progress_analytics` | Summarize sessions, adherence, volume & strength progression | `{ weeksBack?: int (1..12, default 6), exerciseName?: string }` | Read-only aggregation over `workout-sessions` for `userId` |
+| `get_progress_analytics` | Summarize sessions, adherence, volume & strength progression | `{ weeksBack?: int (1..12, default 6), exerciseName?: string }` | Read-only aggregation over `workout-sessions` (`date >= now - weeksBack`, case-insensitive escaped `exerciseName`) and adherence (`completedDays / totalWorkoutDays`) from `weekly-schedules` for `userId` |
 | `search_exercises` | Look up real active exercises | `{ category?: string, query?: string, limit?: int (1..30, default 15) }` | Read-only from `exercises` (`isActive: { $ne: false }`) and `muscle-groups` |
-| `get_weekly_plans` | Inspect saved templates & active schedule | `{ includeActiveSchedule?: boolean (default true) }` | Read-only from `weekly-plans` and active `weekly-schedules` for `userId` |
-| `propose_weekly_plan` | Build a validated 7-day **Draft Create** payload | `{ name, description?, days[7] }` | Validates all `exerciseId`s exist & active in DB, normalizes `exerciseName`, `category`, and `sets: [{ setNumber, targetReps, targetWeight }]`, enforces 7 days `0..6`. Does **not** insert into DB |
-| `propose_weekly_plan_update` | Build a validated 7-day **Draft Update** payload for an existing plan | `{ planId, name?, description?, days[7] }` | Verifies `planId` exists & belongs to `userId` in `weekly-plans`; runs same exercise/7-day grounding guard. Does **not** mutate DB |
+| `get_weekly_plans` | Inspect saved templates & active schedule | `{ includeActiveSchedule?: boolean (default true) }` | Read-only from `weekly-plans` and current active `weekly-schedules` for `userId` |
+| `propose_weekly_plan` | Build a validated 7-day **Draft Create** payload to create a new plan & start a new weekly schedule | `{ name, description?, days[7] }` | Validates all `exerciseId`s exist & active in DB (stored as 24-char hex string), normalizes `exerciseName`, `category`, non-empty `workout.name`, and `sets: [{ setNumber, targetReps, targetWeight }]`, enforces 7 days `0..6`. Does **not** insert into DB until confirmed |
+| `edit_weekly_schedule` | Build a validated 7-day **Draft Schedule Update** payload to modify the user's currently active `weekly-schedules` | `{ scheduleId?, name?, days[7] }` | Verifies an active `weekly-schedules` record exists & belongs to `userId` (auto-resolves current week's active schedule if `scheduleId` omitted); runs same exercise/7-day grounding guard while preserving `isCompleted` / `actualSets` on already-completed days unless explicitly changed. Does **not** mutate DB until confirmed |
 | `save_user_memory` | Upsert a concise long-term fitness fact | `{ category: 'goal' \| 'schedule' \| 'equipment' \| 'injury' \| 'preference', key, value }` | Memory Guard: max 25 facts/user, max 200 chars/value, rejects sensitive PII / prompt-override text |
 | `delete_user_memory` | Remove an outdated user memory fact | `{ category, key }` | Scoped to `{ userId, category, key }` in `ai-memories` |
 
@@ -74,15 +74,15 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
 
 1. **`inputGuard.js`**
    - Trims input, enforces non-empty string `<= 1500` chars.
-   - Blocks common prompt-injection phrases (e.g., system prompt extraction / role override patterns).
-   - Enforces fitness/FitTrack domain scope (allows greetings, confirmations, training, scheduling, exercises, body/progress stats; politely declines off-topic prompts before spending an agent loop).
+   - Blocks explicit prompt-injection / jailbreak phrases (e.g., system prompt extraction, role override, `ignore previous instructions`, developer mode patterns).
+   - Context-aware domain check: does **not** use brittle keyword filtering on follow-up turns or short slot-filling replies (e.g., `"4 buổi/tuần, 45p"`, `"thứ 2 4 6"`, `"ok lưu giúp mình"`). Nuanced off-topic refusal is handled by the Gemini System Instruction so multi-turn scheduling conversations never suffer false-positive `400` blocks.
 
 2. **`authAndToolSchemaGuard.js`**
    - JWT verified by `authMiddleware` sets `req.userId` for both `/api/ai/*` and `/mcp`.
-   - Every MCP tool binds `userId` from auth closure; Zod rejects invalid input types/ranges; `propose_weekly_plan_update` checks plan ownership before returning a draft.
+   - Every MCP tool binds `userId` from auth closure; Zod rejects invalid input types/ranges; `edit_weekly_schedule` checks active schedule ownership before returning a draft.
 
 3. **`slotFillingPolicy` (System Instruction + Context Check)**
-   - Before calling `propose_weekly_plan` (or major rescheduling via `propose_weekly_plan_update`), the assistant must first check `ai-memories`, `get_user_profile`, and `get_progress_analytics` so it does not re-ask known facts, then verify 4 required scheduling slots:
+   - Before calling `propose_weekly_plan` (or major rescheduling via `edit_weekly_schedule`), the assistant must first check `ai-memories`, `get_user_profile`, `get_weekly_plans`, and `get_progress_analytics` so it does not re-ask known facts, then verify 4 required scheduling slots:
      1. Primary goal (hypertrophy / strength / fat loss / general fitness)
      2. Weekly frequency & available/rest days
      3. Session duration (e.g., 30 / 45 / 60 / 90 mins)
@@ -95,9 +95,11 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
    - Tracks `toolTrace` (`[{ name, status }]`) for transparency and debugging.
 
 5. **`groundingAndSchemaGuard.js`**
-   - **Exercise Grounding**: Validates every `exerciseId` in `propose_weekly_plan` / `propose_weekly_plan_update` against `exercises` (`isActive: { $ne: false }`), overwriting `exerciseName` and `category` with authoritative DB values. Hallucinated IDs return `{ isError: true }` so the model retries via `search_exercises`.
-   - **Weekly Plan Structure**: Enforces exact 7-day layout (`dayOfWeek: 0..6`, `Monday..Sunday`, `isRestDay`, `workout: null | { name, exercises: [{ exerciseId, exerciseName, category, sets: [{ setNumber, targetReps, targetWeight }] }] }`) matching `src/controllers/weeklyPlanController.js` and `WeeklyPlanBuilder.jsx`.
-   - **Human-in-the-Loop Confirmation**: `propose_weekly_plan` and `propose_weekly_plan_update` return a validated draft payload stored on the assistant message; DB writes happen only when the user explicitly clicks Save/Update in the UI (`POST /api/ai/conversations/:id/messages/:messageId/apply-plan`).
+   - **Exercise Grounding**: Validates every `exerciseId` in `propose_weekly_plan` / `edit_weekly_schedule` against `exercises` (`isActive: { $ne: false }`), normalizing `exerciseId` to a 24-char hex string and overwriting `exerciseName` and `category` with authoritative DB values. Hallucinated IDs return `{ isError: true }` so the model retries via `search_exercises`.
+   - **Weekly Plan & Schedule Structure**: Enforces exact 7-day layout (`dayOfWeek: 0..6`, `Monday..Sunday`, `isRestDay`, `workout: null | { name, exercises: [{ exerciseId, exerciseName, category, sets: [{ setNumber, targetReps, targetWeight }] }] }`) matching `src/controllers/weeklyPlanController.js`, `src/controllers/weeklyScheduleController.js`, and `WeeklyPlanBuilder.jsx`:
+     - Any day with empty `exercises` (`[]`) is automatically normalized to `isRestDay: true, workout: null`.
+     - Any non-rest day (`isRestDay: false`) must have a non-empty `workout.name.trim()`.
+   - **Human-in-the-Loop Confirmation**: `propose_weekly_plan` and `edit_weekly_schedule` return a validated draft payload stored on the assistant message; DB writes happen only when the user explicitly clicks Confirm/Apply in the UI (`POST /api/ai/conversations/:id/messages/:messageId/apply-plan`).
 
 ---
 
@@ -118,14 +120,16 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
       text: String,
       toolTrace: [{ name: String, status: 'ok' | 'error' }],
       draftPlan: {
-        mode: 'create' | 'update',
+        mode: 'create_schedule' | 'edit_schedule',
+        targetScheduleId: String | null,
         targetPlanId: String | null,
         targetPlanName: String | null,
         plan: {
           name: String,
           description: String,
-          days: Array // 7 days matching weekly-plans schema
+          days: Array // 7 days matching weekly-plans / weekly-schedules schema
         },
+        appliedScheduleId: String | null,
         appliedPlanId: String | null,
         appliedAt: Date | null
       } | null,
@@ -134,7 +138,7 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
   ]
 }
 ```
-- **Context Window**: Only the latest **14 messages** from `messages` are sent to Gemini per turn; full history remains persisted for review.
+- **Context Window & Indexing**: Indexed on `{ userId: 1, updatedAt: -1 }`. Only the latest **14 messages** from `messages` are sent to Gemini per turn; full history remains persisted for review (capped at 100 messages per conversation via `$slice: -100`).
 
 ### `ai-memories`
 ```js
@@ -154,17 +158,21 @@ All tools live under `src/mcp/tools/` and return MCP-compliant `{ content: [{ ty
 ## 6. REST Endpoints & Error Handling
 
 ### Backend Routes (`src/routes/aiRoutes.js`, mounted at `/api/ai`)
-All routes guarded by `authMiddleware` and `aiLimiter` (30 requests / 15 min in production, bypassed when `NODE_ENV === 'development'`):
+All routes guarded by `authMiddleware`; `POST /api/ai/chat` is additionally guarded by `aiChatLimiter` (30 requests / 15 min in production, bypassed when `NODE_ENV === 'development'`):
 - `POST /api/ai/chat` — `{ conversationId?, message }` → `{ conversationId, userMessage, assistantMessage, memoriesUpdated }`
 - `GET /api/ai/conversations` — list user's conversations (`id`, `title`, `updatedAt`, `messageCount`)
 - `GET /api/ai/conversations/:id` — full conversation with messages
 - `DELETE /api/ai/conversations/:id` — delete conversation (scoped by `userId`)
 - `GET /api/ai/memories` — list user's long-term memories
 - `DELETE /api/ai/memories/:id` — delete a memory fact (scoped by `userId`)
-- `POST /api/ai/conversations/:id/messages/:messageId/apply-plan` — re-validates `draftPlan` and inserts or updates `weekly-plans` (matching `weeklyPlanController` rules) then sets `appliedPlanId` & `appliedAt` on that message (returns `409` if already applied).
+- `POST /api/ai/conversations/:id/messages/:messageId/apply-plan` — re-validates `draftPlan` and executes according to `draftPlan.mode`:
+  - **`mode === 'create_schedule'` (`propose_weekly_plan`)**: Inserts a new template into `weekly-plans` **and** starts a new active `weekly-schedules` for the current week (marking any existing active schedule for the current week as superseded/replaced so the new schedule takes effect immediately).
+  - **`mode === 'edit_schedule'` (`edit_weekly_schedule`)**: Updates the user's currently active `weekly-schedules` document (recalculating `totalWorkoutDays` while preserving `isCompleted` / `actualSets` on already-completed days) and syncs its linked `weekly-plans` template if present.
+  - Marks `appliedScheduleId`, `appliedPlanId`, and `appliedAt` on the message (returns `409` if already applied).
 
 ### MCP Endpoint (`src/app.js`)
-- `ALL /mcp` (`authMiddleware`, `aiLimiter`) → handles MCP Streamable HTTP requests for the authenticated `userId`.
+- `ALL /mcp` (`authMiddleware`, `mcpLimiter` at 120 req / 15 min in production) → handles MCP Streamable HTTP requests for the authenticated `userId`.
+- CORS `allowedHeaders` updated to include `'Mcp-Session-Id'` and `'Accept'`.
 
 ### Error Handling
 - Missing `GEMINI_API_KEY`: `/api/ai/chat` returns `503 Service Unavailable` with actionable configuration message.
@@ -179,8 +187,8 @@ All routes guarded by `authMiddleware` and `aiLimiter` (30 requests / 15 min in 
 - **Corner Floating Trigger**: Bottom-right button matching FitTrack dark + `#CCFF00` aesthetic.
 - **Expandable Chat Drawer/Panel**:
   - Header controls: **+ New Chat**, **History** selector (load/delete past chats), **Memory** drawer/popover (inspect & delete `ai-memories` items).
-  - Empty-state quick prompts: *"Analyze my recent progress"*, *"Build a weekly workout plan"*, *"Edit my current weekly plan"*.
-  - Assistant message extras: collapsible **Tool Trace** pills (`get_progress_analytics`, `search_exercises`, etc.) and **Draft Plan Preview Card** (7-day summary, Create vs Update badge, confirm button that calls `apply-plan` and links to `/weekly-planning/:id`).
+  - Empty-state quick prompts: *"Analyze my recent progress"*, *"Build a new weekly workout schedule"*, *"Edit my current week's schedule"*.
+  - Assistant message extras: collapsible **Tool Trace** pills (`get_progress_analytics`, `search_exercises`, etc.) and **Draft Plan Preview Card** (7-day summary, **New Weekly Schedule** vs **Edit Active Schedule** badge, confirm button that calls `apply-plan` and links to `/weekly-schedule`).
 - **`src/api/index.js`**: Add `aiAPI` client methods (`chat`, `getConversations`, `getConversation`, `deleteConversation`, `getMemories`, `deleteMemory`, `applyPlan`).
 
 ---
@@ -188,11 +196,11 @@ All routes guarded by `authMiddleware` and `aiLimiter` (30 requests / 15 min in 
 ## 8. Testing Strategy
 
 1. **Backend Unit Tests (`server/tests/unit/`)**:
-   - `inputGuard.test.js`: length limits, prompt-injection rejections, fitness vs off-topic routing.
+   - `inputGuard.test.js`: length limits, prompt-injection rejections, allows short multi-turn slot-filling replies without false positives.
    - `executionLoopGuard.test.js`: `maxSteps` enforcement, duplicate tool-call loop breaker.
-   - `groundingGuard.test.js`: DB exercise validation, active-only enforcement, 7-day plan schema normalization, `memoryGuard` limits & PII rejection.
+   - `groundingGuard.test.js`: DB exercise validation, active-only enforcement, 7-day plan/schedule schema normalization (empty exercises → `isRestDay: true`, required `workout.name`), `memoryGuard` limits & PII rejection.
 2. **Backend Integration Tests (`server/tests/integration/`)** using `mongodb-memory-server` + mocked Gemini SDK:
-   - `mcpEndpoint.test.js`: `InMemoryTransport` & HTTP `/mcp` auth (`401`), tool execution across `users`, `workout-sessions`, `exercises`, `weekly-plans`, ownership check on `propose_weekly_plan_update`, hallucinated `exerciseId` rejection.
-   - `aiChat.test.js`: slot-filling turn, tool-calling turn creating `draftPlan` + `ai-memories`, persistence in `ai-conversations`, and `apply-plan` create/update + idempotency (`409` on double apply).
+   - `mcpEndpoint.test.js`: `InMemoryTransport` & HTTP `/mcp` auth (`401`), tool execution across `users`, `workout-sessions`, `exercises`, `weekly-plans`, `weekly-schedules`, ownership check on `edit_weekly_schedule`, hallucinated `exerciseId` rejection.
+   - `aiChat.test.js`: slot-filling turn, tool-calling turn creating `draftPlan` (`create_schedule` and `edit_schedule`) + `ai-memories`, persistence in `ai-conversations`, and `apply-plan` creating/updating `weekly-schedules` + idempotency (`409` on double apply).
 3. **Frontend Component Tests (`client/src/components/AiCoachWidget.test.jsx`)**:
    - Hidden when unauthenticated, renders floating trigger when authenticated, sends message, renders `toolTrace` + `draftPlan` card, triggers `applyPlan`, manages memories.

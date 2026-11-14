@@ -1,8 +1,18 @@
 const TOKEN_KEY = 'fittrack_admin_token';
+const USER_KEY = 'fittrack_admin_username';
 let exercisesCache = [];
 let groupsCache = [];
+let toastTimer = null;
 
 const $ = (id) => document.getElementById(id);
+
+const showToast = (msg) => {
+  const el = $('toast');
+  el.textContent = `// ${msg}`;
+  el.classList.remove('hidden');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3200);
+};
 
 const apiFetch = async (url, options = {}) => {
   const token = sessionStorage.getItem(TOKEN_KEY);
@@ -19,121 +29,184 @@ const apiFetch = async (url, options = {}) => {
   return data;
 };
 
+const updateKpiStats = () => {
+  const totalEx = exercisesCache.length;
+  const activeEx = exercisesCache.filter((e) => e.isActive !== false).length;
+  $('stat-total-exercises').textContent = totalEx;
+  $('stat-active-exercises').textContent = `${activeEx} ACTIVE`;
+
+  const totalGrp = groupsCache.length;
+  const activeGrp = groupsCache.filter((g) => g.isActive !== false).length;
+  $('stat-total-groups').textContent = totalGrp;
+  $('stat-active-groups').textContent = `${activeGrp} ENABLED`;
+};
+
 const showDashboard = async () => {
   $('login-view').classList.add('hidden');
   $('dashboard-view').classList.remove('hidden');
+  $('admin-username-label').textContent = sessionStorage.getItem(USER_KEY) || 'ADMIN';
   await Promise.all([loadGroups(), loadExercises(), loadSiteConfig()]);
+  updateKpiStats();
 };
 
 const showLogin = () => {
   sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_KEY);
   $('dashboard-view').classList.add('hidden');
   $('login-view').classList.remove('hidden');
 };
 
-const populateCategorySelect = () => {
-  const select = $('ex-category');
-  select.innerHTML = '';
-  groupsCache
-    .filter((g) => g.isActive !== false)
-    .forEach((g) => {
-      const opt = document.createElement('option');
-      opt.value = g.name;
-      opt.textContent = g.name;
-      select.appendChild(opt);
-    });
+const populateGroupSelects = () => {
+  const activeGroups = groupsCache.filter((g) => g.isActive !== false);
+
+  // Exercise form category select
+  const exCat = $('ex-category');
+  const prevCat = exCat.value;
+  exCat.innerHTML = '';
+  activeGroups.forEach((g) => {
+    const opt = document.createElement('option');
+    opt.value = g.name;
+    opt.textContent = g.name;
+    exCat.appendChild(opt);
+  });
+  if (prevCat) exCat.value = prevCat;
+
+  // Filter bar category select
+  const filterCat = $('exercise-category-filter');
+  const prevFilter = filterCat.value;
+  filterCat.innerHTML = '<option value="">All Muscle Groups</option>';
+  groupsCache.forEach((g) => {
+    const opt = document.createElement('option');
+    opt.value = g.name;
+    opt.textContent = g.name;
+    filterCat.appendChild(opt);
+  });
+  filterCat.value = prevFilter;
+
+  // Merge source & target selects
+  const srcSelect = $('merge-source');
+  const tgtSelect = $('merge-target');
+  srcSelect.innerHTML = '';
+  tgtSelect.innerHTML = '';
+  groupsCache.forEach((g) => {
+    const o1 = document.createElement('option');
+    o1.value = g.id;
+    o1.textContent = g.name;
+    srcSelect.appendChild(o1);
+
+    const o2 = document.createElement('option');
+    o2.value = g.id;
+    o2.textContent = g.name;
+    tgtSelect.appendChild(o2);
+  });
+  if (groupsCache.length > 1) {
+    tgtSelect.selectedIndex = 1;
+  }
 };
 
 const renderGroups = () => {
   const tbody = $('groups-tbody');
   tbody.innerHTML = '';
+
+  const countsByCat = {};
+  exercisesCache.forEach((ex) => {
+    countsByCat[ex.category] = (countsByCat[ex.category] || 0) + 1;
+  });
+
   groupsCache.forEach((g) => {
     const tr = document.createElement('tr');
+    const count = countsByCat[g.name] || 0;
     tr.innerHTML = `
-      <td></td>
-      <td></td>
-      <td>${g.isActive ? 'Active' : 'Hidden'}</td>
+      <td class="ex-name-cell"></td>
+      <td><span class="mono-meta"></span></td>
+      <td><span class="mono-meta">${count} EXERCISES</span></td>
+      <td><span class="${g.isActive ? 'badge-lime' : 'badge-orange'}">${g.isActive ? 'ACTIVE' : 'HIDDEN'}</span></td>
       <td class="row-actions">
-        <button type="button" class="btn-secondary edit-grp">Rename/Edit</button>
-        <button type="button" class="btn-secondary toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
-        <button type="button" class="btn-secondary merge-grp">Merge Into...</button>
+        <button type="button" class="ft-btn-secondary btn-sm edit-grp">Rename / Edit</button>
+        <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
       </td>
     `;
     tr.children[0].textContent = g.name;
-    tr.children[1].textContent = g.slug;
+    tr.children[1].firstChild.textContent = g.slug;
+
     tr.querySelector('.edit-grp').addEventListener('click', () => {
       $('grp-id').value = g.id;
       $('grp-name').value = g.name;
       $('grp-icon').value = g.iconUrl || '';
+      $('group-form-title').textContent = `Rename: ${g.name}`;
+      $('grp-submit-btn').textContent = 'Update & Sync 5 Collections';
+      $('grp-name').focus();
     });
+
     tr.querySelector('.toggle-grp').addEventListener('click', async () => {
       await apiFetch(`/api/admin/muscle-groups/${g.id}`, {
         method: 'PUT',
         body: JSON.stringify({ isActive: !g.isActive }),
       });
+      showToast(`${g.name} ${g.isActive ? 'hidden' : 'restored'}`);
       await loadGroups();
+      updateKpiStats();
     });
-    tr.querySelector('.merge-grp').addEventListener('click', async () => {
-      const targetName = window.prompt(`Merge "${g.name}" into which existing Muscle Group name?`);
-      if (!targetName) return;
-      const target = groupsCache.find((x) => x.name.toLowerCase() === targetName.trim().toLowerCase());
-      if (!target || target.id === g.id) {
-        window.alert('Target muscle group not found.');
-        return;
-      }
-      await apiFetch(`/api/admin/muscle-groups/${g.id}/merge`, {
-        method: 'POST',
-        body: JSON.stringify({ targetId: target.id }),
-      });
-      await Promise.all([loadGroups(), loadExercises()]);
-    });
+
     tbody.appendChild(tr);
   });
 };
 
 const loadGroups = async () => {
   groupsCache = await apiFetch('/api/admin/muscle-groups');
-  populateCategorySelect();
+  populateGroupSelects();
   renderGroups();
 };
 
 const renderExercises = () => {
   const q = $('exercise-search').value.trim().toLowerCase();
+  const catFilter = $('exercise-category-filter').value;
+  const statusFilter = $('exercise-status-filter').value;
   const tbody = $('exercises-tbody');
   tbody.innerHTML = '';
 
-  exercisesCache
-    .filter((ex) => !q || ex.name.toLowerCase().includes(q) || ex.category.toLowerCase().includes(q))
-    .forEach((ex) => {
-      const tr = document.createElement('tr');
-      const active = ex.isActive !== false;
-      tr.innerHTML = `
-        <td></td>
-        <td></td>
-        <td></td>
-        <td>${active ? 'Active' : 'Hidden'}</td>
-        <td class="row-actions">
-          <button type="button" class="btn-secondary edit-btn">Edit</button>
-          <button type="button" class="btn-secondary toggle-btn">${active ? 'Hide' : 'Restore'}</button>
-        </td>
-      `;
-      tr.children[0].textContent = ex.name;
-      tr.children[1].textContent = ex.category;
-      tr.children[2].textContent = ex.equipment || '-';
-      tr.querySelector('.edit-btn').addEventListener('click', () => openEditForm(ex));
-      tr.querySelector('.toggle-btn').addEventListener('click', () => toggleStatus(ex.id, !active));
-      tbody.appendChild(tr);
-    });
+  const filtered = exercisesCache.filter((ex) => {
+    const active = ex.isActive !== false;
+    if (catFilter && ex.category !== catFilter) return false;
+    if (statusFilter === 'active' && !active) return false;
+    if (statusFilter === 'hidden' && active) return false;
+    if (q && !ex.name.toLowerCase().includes(q) && !ex.category.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  $('exercise-count-label').textContent = `SHOWING ${filtered.length} OF ${exercisesCache.length} EXERCISES`;
+
+  filtered.forEach((ex) => {
+    const tr = document.createElement('tr');
+    const active = ex.isActive !== false;
+    tr.innerHTML = `
+      <td class="ex-name-cell"></td>
+      <td><span class="badge-gray"></span></td>
+      <td class="mono-meta"></td>
+      <td><span class="${active ? 'badge-lime' : 'badge-orange'}">${active ? 'ACTIVE' : 'HIDDEN'}</span></td>
+      <td class="row-actions">
+        <button type="button" class="ft-btn-secondary btn-sm edit-btn">Edit</button>
+        <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
+      </td>
+    `;
+    tr.children[0].textContent = ex.name;
+    tr.children[1].firstChild.textContent = ex.category;
+    tr.children[2].textContent = ex.equipment || 'STANDARD';
+    tr.querySelector('.edit-btn').addEventListener('click', () => openEditForm(ex));
+    tr.querySelector('.toggle-btn').addEventListener('click', () => toggleStatus(ex.id, !active));
+    tbody.appendChild(tr);
+  });
 };
 
 const loadExercises = async () => {
   exercisesCache = await apiFetch('/api/admin/exercises');
   renderExercises();
+  renderGroups();
 };
 
 const openEditForm = (ex = null) => {
   $('exercise-form').classList.remove('hidden');
-  $('exercise-form-title').textContent = ex ? 'Edit Exercise' : 'New Exercise';
+  $('exercise-form-title').textContent = ex ? `Edit: ${ex.name}` : 'New Exercise';
   $('ex-id').value = ex ? ex.id : '';
   $('ex-name').value = ex ? ex.name : '';
   if (ex && ex.category) $('ex-category').value = ex.category;
@@ -142,6 +215,7 @@ const openEditForm = (ex = null) => {
   $('ex-difficulty').value = ex ? (ex.difficulty || 'Beginner') : 'Beginner';
   $('ex-image').value = ex ? (ex.imageUrl || '') : '';
   $('ex-instructions').value = ex && Array.isArray(ex.instructions) ? ex.instructions.join('\n') : '';
+  $('ex-name').focus();
 };
 
 const toggleStatus = async (id, isActive) => {
@@ -149,7 +223,9 @@ const toggleStatus = async (id, isActive) => {
     method: 'PATCH',
     body: JSON.stringify({ isActive }),
   });
+  showToast(isActive ? 'Exercise restored to catalogue' : 'Exercise hidden from catalogue');
   await loadExercises();
+  updateKpiStats();
 };
 
 const loadSiteConfig = async () => {
@@ -162,18 +238,38 @@ const loadSiteConfig = async () => {
 
 const updatePreview = () => {
   const url = $('cfg-hero-bg').value.trim();
+  const banner = $('cfg-banner').value.trim();
+  const note = $('cfg-note').value.trim();
   const img = $('cfg-hero-preview');
+  const bannerEl = $('preview-banner');
+
   if (url) {
     img.src = url;
     img.classList.remove('hidden');
+    $('stat-bg-mode').textContent = 'CUSTOM';
   } else {
     img.classList.add('hidden');
+    $('stat-bg-mode').textContent = 'DEFAULT';
   }
+
+  if (banner) {
+    bannerEl.textContent = banner;
+    bannerEl.classList.remove('hidden');
+    $('stat-banner-mode').textContent = 'LIVE BANNER';
+    $('stat-banner-mode').className = 'badge-lime';
+  } else {
+    bannerEl.classList.add('hidden');
+    $('stat-banner-mode').textContent = 'NO BANNER';
+    $('stat-banner-mode').className = 'badge-orange';
+  }
+
+  $('preview-note').textContent = note || 'Default FitTrack dark cyber-grid background active.';
 };
 
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  $('login-error').textContent = '';
+  const errEl = $('login-error');
+  errEl.classList.add('hidden');
   try {
     const data = await apiFetch('/api/admin/login', {
       method: 'POST',
@@ -183,14 +279,19 @@ $('login-form').addEventListener('submit', async (e) => {
       }),
     });
     sessionStorage.setItem(TOKEN_KEY, data.token);
+    sessionStorage.setItem(USER_KEY, data.username || 'ADMIN');
     await showDashboard();
+    showToast('Operator session initialized');
   } catch (err) {
-    $('login-error').textContent = err.message;
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
   }
 });
 
 $('logout-btn').addEventListener('click', showLogin);
 $('exercise-search').addEventListener('input', renderExercises);
+$('exercise-category-filter').addEventListener('change', renderExercises);
+$('exercise-status-filter').addEventListener('change', renderExercises);
 $('new-exercise-btn').addEventListener('click', () => openEditForm(null));
 $('cancel-exercise-btn').addEventListener('click', () => $('exercise-form').classList.add('hidden'));
 
@@ -209,12 +310,23 @@ $('exercise-form').addEventListener('submit', async (e) => {
 
   if (id) {
     await apiFetch(`/api/admin/exercises/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('Exercise updated');
   } else {
     await apiFetch('/api/admin/exercises', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('New exercise added to catalogue');
   }
   $('exercise-form').classList.add('hidden');
   await loadExercises();
+  updateKpiStats();
 });
+
+const resetGroupForm = () => {
+  $('grp-id').value = '';
+  $('grp-name').value = '';
+  $('grp-icon').value = '';
+  $('group-form-title').textContent = 'Add / Rename Muscle Group';
+  $('grp-submit-btn').textContent = 'Save Muscle Group';
+};
 
 $('group-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -225,25 +337,47 @@ $('group-form').addEventListener('submit', async (e) => {
   };
   if (id) {
     await apiFetch(`/api/admin/muscle-groups/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    showToast('Muscle group renamed & synced across 5 collections');
   } else {
     await apiFetch('/api/admin/muscle-groups', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('New muscle group created');
   }
-  $('grp-id').value = '';
-  $('grp-name').value = '';
-  $('grp-icon').value = '';
+  resetGroupForm();
   await Promise.all([loadGroups(), loadExercises()]);
+  updateKpiStats();
 });
 
-$('cancel-group-btn').addEventListener('click', () => {
-  $('grp-id').value = '';
-  $('grp-name').value = '';
-  $('grp-icon').value = '';
+$('cancel-group-btn').addEventListener('click', resetGroupForm);
+
+$('merge-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const sourceId = $('merge-source').value;
+  const targetId = $('merge-target').value;
+  if (!sourceId || !targetId || sourceId === targetId) {
+    showToast('Select two distinct muscle groups to merge');
+    return;
+  }
+  const res = await apiFetch(`/api/admin/muscle-groups/${sourceId}/merge`, {
+    method: 'POST',
+    body: JSON.stringify({ targetId }),
+  });
+  showToast(res.message || 'Muscle groups merged');
+  await Promise.all([loadGroups(), loadExercises()]);
+  updateKpiStats();
 });
 
 $('cfg-hero-bg').addEventListener('input', updatePreview);
+$('cfg-banner').addEventListener('input', updatePreview);
+$('cfg-note').addEventListener('input', updatePreview);
+
+$('reset-bg-btn').addEventListener('click', () => {
+  $('cfg-hero-bg').value = '';
+  updatePreview();
+});
+
 $('config-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  $('cfg-status').textContent = 'Saving...';
+  $('cfg-status').textContent = 'SAVING...';
   await apiFetch('/api/admin/site-config', {
     method: 'PUT',
     body: JSON.stringify({
@@ -252,7 +386,9 @@ $('config-form').addEventListener('submit', async (e) => {
       featuredNote: $('cfg-note').value,
     }),
   });
-  $('cfg-status').textContent = 'Saved!';
+  $('cfg-status').textContent = 'PUBLISHED';
+  showToast('Site configuration published');
+  updatePreview();
 });
 
 const switchTab = (activeTabId, activePanelId) => {

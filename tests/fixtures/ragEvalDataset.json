@@ -1,0 +1,37 @@
+[
+  {
+    "query": "How many weekly sets per muscle group maximize muscle hypertrophy?",
+    "topic": "training",
+    "expectedSourceId": "acsm-schoenfeld-resistance-training"
+  },
+  {
+    "query": "How long should I rest between heavy strength squat sets?",
+    "topic": "training",
+    "expectedSourceId": "acsm-schoenfeld-resistance-training"
+  },
+  {
+    "query": "How much protein per kg of body weight during a cutting caloric deficit?",
+    "topic": "nutrition",
+    "expectedSourceId": "issn-protein-and-exercise-2017"
+  },
+  {
+    "query": "Should I take a caloric surplus to build muscle or can I recomp?",
+    "topic": "nutrition",
+    "expectedSourceId": "issn-diets-body-composition-2017"
+  },
+  {
+    "query": "What is the daily maintenance dose for creatine monohydrate without loading?",
+    "topic": "supplements",
+    "expectedSourceId": "issn-creatine-supplementation-2017"
+  },
+  {
+    "query": "How much fluid should I drink after a sweaty workout to rehydrate quickly?",
+    "topic": "nutrition",
+    "expectedSourceId": "acsm-hydration-fluid-replacement-2007"
+  },
+  {
+    "query": "What does RPE 8 in RIR mean and how many hours of sleep do adults need?",
+    "topic": "recovery",
+    "expectedSourceId": "zourdos-rir-aasm-sleep-recovery"
+  }
+]

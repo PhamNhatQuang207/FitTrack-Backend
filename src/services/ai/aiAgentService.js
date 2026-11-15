@@ -36,6 +36,8 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
   const loopGuard = createExecutionLoopGuard();
   let latestDraftPlan = null;
   let memoriesUpdated = false;
+  const collectedCitations = [];
+  const citationsByChunkId = new Map();
 
   try {
     const { tools: mcpTools } = await mcpClient.listTools();
@@ -64,7 +66,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       if (!stepCheck.ok) {
         if (!finalAssistantText) {
           finalAssistantText =
-            'Mình đã tổng hợp thông tin từ dữ liệu tập luyện của bạn. Bạn kiểm tra kết quả bên dưới nhé!';
+            'I have compiled the information from your training data. Please check the results below!';
         }
         break;
       }
@@ -79,7 +81,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       if (functionCalls.length === 0) {
         finalAssistantText =
           (turn.text || '').trim() ||
-          'Mình đã xử lý yêu cầu của bạn. Bạn xem chi tiết bên dưới nhé!';
+          'I have processed your request. Please check the details below!';
         break;
       }
 
@@ -143,6 +145,25 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
         }
         if (
           !isError &&
+          callName === 'search_fitness_knowledge' &&
+          Array.isArray(parsedPayload.citations)
+        ) {
+          parsedPayload.citations = parsedPayload.citations.map((item) => {
+            if (!item || !item.chunkId) return item;
+            let existing = citationsByChunkId.get(item.chunkId);
+            if (!existing) {
+              existing = {
+                citationNumber: collectedCitations.length + 1,
+                ...item
+              };
+              citationsByChunkId.set(item.chunkId, existing);
+              collectedCitations.push(existing);
+            }
+            return existing;
+          });
+        }
+        if (
+          !isError &&
           (callName === 'save_user_memory' || callName === 'delete_user_memory')
         ) {
           memoriesUpdated = true;
@@ -167,6 +188,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       text: finalAssistantText,
       toolTrace: loopGuard.getToolTrace(),
       draftPlan: latestDraftPlan,
+      citations: collectedCitations,
       memoriesUpdated
     };
   } finally {

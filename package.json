@@ -11,7 +11,9 @@
     "test:coverage": "jest --runInBand --coverage",
     "start": "node src/app.js",
     "dev": "cross-env NODE_ENV=development nodemon src/app.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "ingest:knowledge": "node src/scripts/ingestKnowledge.js",
+    "eval:rag": "node src/scripts/evalRag.js"
   },
   "keywords": [],
   "author": "",

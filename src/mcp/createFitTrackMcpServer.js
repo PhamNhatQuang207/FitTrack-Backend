@@ -8,6 +8,10 @@ const {
   ALLOWED_MEMORY_CATEGORIES,
   MAX_MEMORIES_PER_USER
 } = require('../services/ai/guards/groundingAndSchemaGuard');
+const {
+  searchKnowledge,
+  ALLOWED_TOPICS
+} = require('../services/rag/knowledgeSearchService');
 
 const setSchema = z.object({
   setNumber: z.number().int().min(1).max(20).optional(),
@@ -418,7 +422,7 @@ function createFitTrackMcpServer({ db, userId }) {
     }
   );
 
-  // 7. save_user_memory
+  // 8. save_user_memory
   server.tool(
     'save_user_memory',
     'Save or update a concise long-term fitness memory fact about the user (goal, schedule, equipment, injury, preference)',
@@ -477,7 +481,7 @@ function createFitTrackMcpServer({ db, userId }) {
     }
   );
 
-  // 8. delete_user_memory
+  // 9. delete_user_memory
   server.tool(
     'delete_user_memory',
     'Delete an outdated user fitness memory fact by category and key',
@@ -503,6 +507,45 @@ function createFitTrackMcpServer({ db, userId }) {
         category,
         key: normalizedKey
       });
+    }
+  );
+
+  // 10. search_fitness_knowledge
+  server.tool(
+    'search_fitness_knowledge',
+    'Search evidence-based English sports science, resistance training, nutrition, supplement, hydration, and recovery knowledge base with peer-reviewed citations. Call this when answering factual training or nutrition questions.',
+    {
+      query: z.string().min(2).max(300),
+      topic: z.enum(ALLOWED_TOPICS).optional(),
+      limit: z.number().int().min(1).max(8).optional()
+    },
+    async ({ query, topic, limit = 4 }) => {
+      try {
+        const { modeUsed, results } = await searchKnowledge({
+          db,
+          query,
+          topic,
+          limit
+        });
+
+        if (results.length === 0) {
+          return toMcpJson({
+            count: 0,
+            modeUsed,
+            citations: [],
+            message:
+              'No sufficiently relevant peer-reviewed evidence chunks found for this query. Do not invent studies or citations.'
+          });
+        }
+
+        return toMcpJson({
+          count: results.length,
+          modeUsed,
+          citations: results
+        });
+      } catch (err) {
+        return toMcpJson({ error: err.message || 'Failed to search knowledge base' }, true);
+      }
     }
   );
 

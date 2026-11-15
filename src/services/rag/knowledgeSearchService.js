@@ -9,12 +9,28 @@ const KNOWLEDGE_COLLECTION = 'knowledge-chunks';
 const ALLOWED_TOPICS = ['training', 'nutrition', 'supplements', 'recovery'];
 const DEFAULT_MIN_VECTOR_SCORE = 0.35;
 
+const ENGLISH_STOPWORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',
+  'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',
+  'between', 'best', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does',
+  'doing', 'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has',
+  'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his',
+  'how', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'just', 'me', 'more',
+  'most', 'my', 'myself', 'no', 'nor', 'not', 'now', 'of', 'off', 'on', 'once',
+  'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'per',
+  'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their',
+  'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those',
+  'through', 'to', 'too', 'under', 'until', 'use', 'used', 'using', 'very', 'was',
+  'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why',
+  'will', 'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves'
+]);
+
 function tokenize(text) {
   return String(text || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s/-]+/g, ' ')
     .split(/\s+/)
-    .filter((t) => t.length >= 2);
+    .filter((t) => t.length >= 2 && !ENGLISH_STOPWORDS.has(t));
 }
 
 function scoreLexicalMatch(queryTokens, docContent) {
@@ -155,17 +171,17 @@ async function runLocalHybridSearch({ db, query, queryVector, topic, limit, minS
     .sort((a, b) => b.lexicalScore - a.lexicalScore)
     .slice(0, limit * 3);
 
-  if (vectorScored.length === 0 && lexicalScored.length === 0) {
+  if (vectorScored.length === 0) {
     return [];
   }
 
-  // Only keep chunks that passed vector threshold or strong lexical threshold
+  // Require candidates to meet the semantic threshold; lexical matches only boost RRF ordering
   const validVectorIds = new Set(vectorScored.map((d) => d.chunkId));
   const fused = reciprocalRankFusion([vectorScored, lexicalScored], 60)
-    .filter((d) => validVectorIds.has(d.chunkId) || (d.lexicalScore || 0) >= 1.5)
+    .filter((d) => validVectorIds.has(d.chunkId))
     .slice(0, limit);
 
-  return fused.map((doc) => formatResult(doc, doc.vectorScore ?? doc.rrfScore));
+  return fused.map((doc) => formatResult(doc, doc.vectorScore));
 }
 
 async function runAtlasHybridSearch({ db, query, queryVector, topic, limit, minScore }) {
@@ -196,16 +212,16 @@ async function runAtlasHybridSearch({ db, query, queryVector, topic, limit, minS
   ]);
 
   const filteredVectorDocs = vectorDocs.filter((d) => (d.vectorScore || 0) >= minScore);
-  if (filteredVectorDocs.length === 0 && textDocs.length === 0) {
+  if (filteredVectorDocs.length === 0) {
     return [];
   }
 
   const validVectorIds = new Set(filteredVectorDocs.map((d) => d.chunkId));
   const fused = reciprocalRankFusion([filteredVectorDocs, textDocs], 60)
-    .filter((d) => validVectorIds.has(d.chunkId) || (d.lexicalScore || 0) >= 1.5)
+    .filter((d) => validVectorIds.has(d.chunkId))
     .slice(0, limit);
 
-  return fused.map((doc) => formatResult(doc, doc.vectorScore ?? doc.rrfScore));
+  return fused.map((doc) => formatResult(doc, doc.vectorScore));
 }
 
 async function searchKnowledge({
@@ -258,6 +274,7 @@ module.exports = {
   KNOWLEDGE_COLLECTION,
   ALLOWED_TOPICS,
   DEFAULT_MIN_VECTOR_SCORE,
+  tokenize,
   buildAtlasVectorPipeline,
   buildAtlasTextPipeline,
   searchKnowledge

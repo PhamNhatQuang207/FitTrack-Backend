@@ -60,6 +60,25 @@ describe('vectorMath (unit)', () => {
     expect(fused.map((x) => x.chunkId).slice(0, 2).sort()).toEqual(['a', 'b']);
     expect(fused[0].rrfScore).toBeGreaterThan(fused[2].rrfScore);
   });
+
+  test('reciprocalRankFusion merges additional properties from subsequent lists while summing rrfScore', () => {
+    const vectorList = [
+      { chunkId: 'a', vectorScore: 0.91 }
+    ];
+    const lexicalList = [
+      { chunkId: 'a', lexicalScore: 4.25, extraTag: 'bm25-hit' }
+    ];
+
+    const fused = reciprocalRankFusion([vectorList, lexicalList], 60);
+    expect(fused).toHaveLength(1);
+    expect(fused[0]).toMatchObject({
+      chunkId: 'a',
+      vectorScore: 0.91,
+      lexicalScore: 4.25,
+      extraTag: 'bm25-hit'
+    });
+    expect(fused[0].rrfScore).toBeCloseTo(2 / 61, 8);
+  });
 });
 
 const path = require('path');

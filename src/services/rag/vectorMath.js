@@ -66,7 +66,8 @@ function reciprocalRankFusion(rankedLists, k = 60) {
       const contribution = 1 / (k + rank);
       const existing = merged.get(item.chunkId);
       if (existing) {
-        existing.rrfScore += contribution;
+        const nextRrfScore = existing.rrfScore + contribution;
+        Object.assign(existing, item, { rrfScore: nextRrfScore });
       } else {
         merged.set(item.chunkId, {
           ...item,

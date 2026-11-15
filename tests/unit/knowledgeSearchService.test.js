@@ -7,6 +7,7 @@ const { toFloat32Binary, normalizeVector } = require('../../src/services/rag/vec
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const {
   KNOWLEDGE_COLLECTION,
+  tokenize,
   buildAtlasVectorPipeline,
   buildAtlasTextPipeline,
   searchKnowledge
@@ -166,6 +167,44 @@ describe('knowledgeSearchService (unit)', () => {
     expect(out.modeUsed).toBe('local');
     expect(out.results).toHaveLength(1);
     expect(out.results[0].chunkId).toBe('issn-protein#0');
+  });
+
+  test('searchKnowledge blocks long off-topic stopword queries when no chunk passes minVectorScore', async () => {
+    const docVec = normalizeVector([0, 1, 0, 0]);
+    await db.collection(KNOWLEDGE_COLLECTION).insertOne({
+      chunkId: 'acsm#0',
+      sourceId: 'acsm',
+      title: 'Training',
+      topic: 'training',
+      authors: 'ACSM',
+      year: 2009,
+      section: 'Rest',
+      references: [],
+      content: 'What is the best guide for strength training and how to progress in sets with rest for beginners?',
+      embedding: toFloat32Binary(docVec)
+    });
+
+    embedText.mockResolvedValueOnce(normalizeVector([1, 0, 0, 0]));
+
+    const out = await searchKnowledge({
+      db,
+      query: 'What is the best Python tutorial for beginners and how to install it in windows?',
+      limit: 3,
+      minScore: 0.35,
+      mode: 'local'
+    });
+
+    expect(out.results).toEqual([]);
+  });
+
+  test('tokenize strips English stopwords while preserving domain terms', () => {
+    expect(tokenize('What is the best protein for muscle recovery and strength in beginners?')).toEqual([
+      'protein',
+      'muscle',
+      'recovery',
+      'strength',
+      'beginners'
+    ]);
   });
 
   test('searchKnowledge returns empty results for blank query without calling embedText', async () => {

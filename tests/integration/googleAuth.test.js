@@ -45,6 +45,10 @@ describe('POST /api/auth/google', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('token');
     expect(res.body.name).toBe('Google User');
+    expect(res.body.email).toBe('newgoogle@example.com');
+    const refreshCookie = (res.headers['set-cookie'] || []).find((c) => c.startsWith('fittrack_refresh='));
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain('HttpOnly');
 
     const saved = await db.collection('users').findOne({ email: 'newgoogle@example.com' });
     expect(saved.isVerified).toBe(true);

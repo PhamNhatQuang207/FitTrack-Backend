@@ -30,7 +30,8 @@ const parseCookies = (cookieHeader = '') => {
 };
 
 const getBaseCookieOptions = () => {
-    const isProd = process.env.NODE_ENV === 'production';
+    // Render injects RENDER=true even when NODE_ENV isn't explicitly set in dashboard env vars.
+    const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
     // Cross-origin Vercel previews need SameSite=None over HTTPS, which also works
     // for fittrack.io.vn -> api.fittrack.io.vn; localhost dev uses HTTP so it needs Lax.
     const sameSite = process.env.COOKIE_SAME_SITE || (isProd ? 'none' : 'lax');

@@ -5,7 +5,7 @@ const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
-const { REFRESH_COOKIE_NAME, REFRESH_COLLECTION } = require('../../src/utils/refreshToken');
+const { REFRESH_COOKIE_NAME, REFRESH_COLLECTION, getBaseCookieOptions } = require('../../src/utils/refreshToken');
 const sendEmailSmart = require('../../src/utils/sendEmailSmart');
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const { getDb } = require('../../src/config/db');
@@ -473,5 +473,21 @@ describe('Refresh token cookie flow (POST /api/auth/refresh & /logout)', () => {
       .post('/api/auth/refresh')
       .set('Cookie', [cookiePair])
       .expect(401);
+  });
+
+  test('getBaseCookieOptions enables Secure + SameSite=None on Render even if NODE_ENV is not production', () => {
+    const prevRender = process.env.RENDER;
+    process.env.RENDER = 'true';
+    try {
+      expect(getBaseCookieOptions()).toEqual({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/api/auth',
+      });
+    } finally {
+      if (prevRender === undefined) delete process.env.RENDER;
+      else process.env.RENDER = prevRender;
+    }
   });
 });

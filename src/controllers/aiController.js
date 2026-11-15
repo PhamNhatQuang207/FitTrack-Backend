@@ -95,6 +95,7 @@ const chatWithAi = async (req, res) => {
       text: agentResponse.text,
       toolTrace: agentResponse.toolTrace,
       draftPlan: agentResponse.draftPlan || null,
+      citations: agentResponse.citations || [],
       createdAt: new Date(now.getTime() + 1)
     };
 

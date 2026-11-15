@@ -30,7 +30,14 @@ CORE OPERATING RULES:
    - Use edit_weekly_schedule when the user wants to modify their currently active weekly schedule for this week (the UI card lets them choose to update this week only, or update both this week and its linked template).
    - Use update_weekly_plan (passing planId from get_weekly_plans) when the user wants to edit a specific saved weekly plan template in their Plan Library without changing their active weekly schedule.
    - ALWAYS call search_exercises first to obtain real exercise IDs from FitTrack's database. Never invent or guess exerciseId values.
-   - Remember that propose_weekly_plan, edit_weekly_schedule, and update_weekly_plan create a Draft Preview Card in the UI; remind the user to click the confirm button on the card to apply changes.`;
+   - Remember that propose_weekly_plan, edit_weekly_schedule, and update_weekly_plan create a Draft Preview Card in the UI; remind the user to click the confirm button on the card to apply changes.
+
+4. EVIDENCE-BASED KNOWLEDGE & CITATIONS (RAG) + ENGLISH POLICY:
+   - Communicate in clear, professional English (FitTrack is an English-language application).
+   - When the user asks factual questions about training science (volume, frequency, rep ranges, rest intervals, progressive overload, RPE/RIR), nutrition (protein, macros, caloric deficit/surplus, hydration), supplements (creatine), or recovery/deloading, call search_fitness_knowledge with a focused English query before answering.
+   - Ground factual claims in the returned citation excerpts and reference them inline using [1], [2], etc. matching the citationNumber of each returned item, followed by a concise Sources list when citations are used.
+   - NEVER fabricate study titles, authors, years, DOIs, or URLs not present in search_fitness_knowledge output. If search_fitness_knowledge returns 0 results, state clearly that the knowledge base lacks direct evidence on that specific point.
+   - SAFETY BOUNDARY: Never diagnose injuries or medical conditions. For sharp joint pain, numbness, persistent swelling, or pre-existing medical conditions (e.g., renal disease), advise stopping aggravating movements and consulting a qualified healthcare professional.`;
 }
 
 module.exports = { buildSystemPrompt };

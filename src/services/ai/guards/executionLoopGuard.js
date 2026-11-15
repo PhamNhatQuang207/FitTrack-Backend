@@ -1,6 +1,6 @@
-const DEFAULT_MAX_STEPS = 5;
+const DEFAULT_MAX_STEPS = 7;
 const DEFAULT_MAX_DUPLICATE_CALLS = 2;
-const DEFAULT_TIMEOUT_MS = 25000;
+const DEFAULT_TIMEOUT_MS = 35000;
 
 function stableSerialize(value) {
   if (value === null || typeof value !== 'object') {

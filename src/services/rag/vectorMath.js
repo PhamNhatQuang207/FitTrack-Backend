@@ -17,15 +17,17 @@ function normalizeVector(values) {
 }
 
 function toFloat32Binary(values) {
-  const float32 = Float32Array.from(values.map((v) => Number(v) || 0));
-  const buf = Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength);
-  return new Binary(buf, Binary.SUBTYPE_BYTE_ARRAY);
+  const float32 = Float32Array.from((values || []).map((v) => Number(v) || 0));
+  return Binary.fromFloat32Array(float32);
 }
 
 function fromFloat32Binary(input) {
   if (!input) return [];
   if (Array.isArray(input)) {
     return input.map((v) => Number(v) || 0);
+  }
+  if (input.sub_type === Binary.SUBTYPE_VECTOR && typeof input.toFloat32Array === 'function') {
+    return Array.from(input.toFloat32Array());
   }
   const raw = input instanceof Binary ? input.buffer : input;
   const uint8 =

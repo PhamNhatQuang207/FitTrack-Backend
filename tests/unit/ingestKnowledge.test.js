@@ -1,4 +1,5 @@
 const path = require('path');
+const { Binary } = require('mongodb');
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const { KNOWLEDGE_COLLECTION } = require('../../src/services/rag/knowledgeSearchService');
 const { ingestKnowledgeDirectory } = require('../../src/scripts/ingestKnowledge');
@@ -30,7 +31,8 @@ describe('ingestKnowledge (unit)', () => {
     expect(first.skippedCount).toBe(0);
 
     const sampleDoc = await db.collection(KNOWLEDGE_COLLECTION).findOne({});
-    expect(sampleDoc.embedding.buffer.byteLength).toBe(768 * 4);
+    expect(sampleDoc.embedding.sub_type).toBe(Binary.SUBTYPE_VECTOR);
+    expect(sampleDoc.embedding.buffer.byteLength).toBe(768 * 4 + 2);
 
     // Insert a stale chunk to confirm pruning works
     await db.collection(KNOWLEDGE_COLLECTION).insertOne({

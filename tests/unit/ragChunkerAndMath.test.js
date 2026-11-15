@@ -18,20 +18,23 @@ describe('vectorMath (unit)', () => {
     expect(normalizeVector([0, 0, 0])).toEqual([0, 0, 0]);
   });
 
-  test('toFloat32Binary and fromFloat32Binary round-trip 768-dim vector accurately (including unaligned Buffer slice)', () => {
+  test('toFloat32Binary and fromFloat32Binary round-trip 768-dim vector as BSON SUBTYPE_VECTOR (including unaligned Buffer slice)', () => {
     const input = Array.from({ length: 768 }, (_, i) => ((i % 10) - 5) * 0.1);
     const bin = toFloat32Binary(input);
     expect(bin).toBeInstanceOf(Binary);
-    expect(bin.buffer.byteLength).toBe(768 * 4);
+    expect(bin.sub_type).toBe(Binary.SUBTYPE_VECTOR);
+    expect(bin.buffer.byteLength).toBe(768 * 4 + 2);
 
     const decoded = fromFloat32Binary(bin);
     expect(decoded).toHaveLength(768);
     expect(decoded[0]).toBeCloseTo(input[0], 5);
     expect(decoded[767]).toBeCloseTo(input[767], 5);
 
-    // Simulate unaligned Buffer slice (byteOffset % 4 !== 0)
-    const padded = Buffer.alloc(768 * 4 + 1);
-    Buffer.from(bin.buffer).copy(padded, 1);
+    // Simulate unaligned raw Float32 Buffer slice (byteOffset % 4 !== 0)
+    const rawFloat32 = Float32Array.from(input);
+    const rawBuf = Buffer.from(rawFloat32.buffer, rawFloat32.byteOffset, rawFloat32.byteLength);
+    const padded = Buffer.alloc(rawBuf.byteLength + 1);
+    rawBuf.copy(padded, 1);
     const unalignedSlice = padded.subarray(1);
     const unalignedDecoded = fromFloat32Binary(unalignedSlice);
     expect(unalignedDecoded).toHaveLength(768);

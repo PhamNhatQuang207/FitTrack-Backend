@@ -61,3 +61,77 @@ describe('vectorMath (unit)', () => {
     expect(fused[0].rrfScore).toBeGreaterThan(fused[2].rrfScore);
   });
 });
+
+const path = require('path');
+const {
+  parseKnowledgeDocument,
+  chunkKnowledgeDocument,
+  loadAndChunkKnowledgeDir
+} = require('../../src/services/rag/chunker');
+
+describe('chunker (unit)', () => {
+  const sampleDoc = `---
+sourceId: sample-doc
+title: Sample Resistance Guide
+topic: training
+authors: Sample Author
+year: 2024
+references:
+  - label: Sample Study (2024)
+    doi: 10.1000/sample
+    url: https://doi.org/10.1000/sample
+---
+
+# Sample Resistance Guide
+
+## Section One
+${Array.from({ length: 120 }, (_, i) => `word${i}`).join(' ')}
+
+## Section Two
+Short section text about rest intervals of 3 to 5 minutes.
+`;
+
+  test('parseKnowledgeDocument extracts YAML frontmatter and references', () => {
+    const parsed = parseKnowledgeDocument(sampleDoc);
+    expect(parsed.metadata).toEqual({
+      sourceId: 'sample-doc',
+      title: 'Sample Resistance Guide',
+      topic: 'training',
+      authors: 'Sample Author',
+      year: 2024,
+      references: [
+        {
+          label: 'Sample Study (2024)',
+          doi: '10.1000/sample',
+          url: 'https://doi.org/10.1000/sample'
+        }
+      ]
+    });
+    expect(parsed.body).toContain('## Section One');
+  });
+
+  test('chunkKnowledgeDocument splits by section and enforces maxWords with overlap', () => {
+    const chunks = chunkKnowledgeDocument(sampleDoc, { maxWords: 70, overlapWords: 15 });
+    expect(chunks.length).toBeGreaterThanOrEqual(3);
+    expect(chunks[0].chunkId).toBe('sample-doc#0');
+    expect(chunks[0].section).toBe('Section One');
+    expect(chunks[0].content).toContain('Sample Resistance Guide — Section One');
+    expect(chunks[0].contentHash).toMatch(/^[a-f0-9]{64}$/);
+    const lastChunk = chunks[chunks.length - 1];
+    expect(lastChunk.section).toBe('Section Two');
+    expect(lastChunk.references).toHaveLength(1);
+  });
+
+  test('loadAndChunkKnowledgeDir parses all 6 curated knowledge files in src/data/knowledge', () => {
+    const knowledgeDir = path.resolve(__dirname, '../../src/data/knowledge');
+    const chunks = loadAndChunkKnowledgeDir(knowledgeDir);
+    expect(chunks.length).toBeGreaterThanOrEqual(12);
+    const sourceIds = new Set(chunks.map((c) => c.sourceId));
+    expect(sourceIds.size).toBe(6);
+    for (const chunk of chunks) {
+      expect(chunk.references.length).toBeGreaterThanOrEqual(1);
+      expect(chunk.topic).toMatch(/^(training|nutrition|supplements|recovery)$/);
+    }
+  });
+});
+

@@ -3,7 +3,7 @@ const router = express.Router();
 const { check } = require('express-validator');
 const validate = require('../middleware/validate');
 const { authLimiter } = require('../middleware/rateLimiter');
-const { register, login, googleLogin, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
+const { register, login, googleLogin, refresh, logout, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
 
 /**
  * @swagger
@@ -289,5 +289,31 @@ router.post('/google',
     validate,
     googleLogin
 );
+
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Rotate refresh cookie and issue a new short-lived access token
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: New access token issued
+ *       401:
+ *         description: Missing, invalid, or expired refresh token
+ */
+router.post('/refresh', refresh);
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Revoke current refresh token and clear refresh cookie
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ */
+router.post('/logout', logout);
 
 module.exports = router;

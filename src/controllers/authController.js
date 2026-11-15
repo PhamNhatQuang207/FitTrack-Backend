@@ -1,10 +1,18 @@
 const { getDb } = require('../config/db');
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmailSmart');
 const verifyGoogleToken = require('../utils/verifyGoogleToken');
+const {
+    REFRESH_COOKIE_NAME,
+    parseCookies,
+    clearRefreshCookie,
+    issueSessionTokens,
+    rotateRefreshToken,
+    revokeRefreshToken,
+    revokeAllUserRefreshTokens,
+} = require('../utils/refreshToken');
 
 const escapeEmailRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -175,18 +183,15 @@ const login = async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        // Create JWT token
-        const token = jwt.sign(
-            { userId: user._id },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie)
+        const token = await issueSessionTokens({ db, userId: user._id, res });
 
         res.json({
             message: 'Login successful',
             token,
             userId: user._id,
-            name: user.name
+            name: user.name,
+            email: user.email
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -383,6 +388,8 @@ const resetPassword = async (req, res) => {
             }
         );
 
+        await revokeAllUserRefreshTokens({ db, userId: user._id });
+
         res.status(200).json({ message: 'Password reset successful! You can now log in with your new password.' });
     } catch (error) {
         console.error('Password reset error:', error);
@@ -439,21 +446,70 @@ const googleLogin = async (req, res) => {
             );
         }
 
-        const token = jwt.sign(
-            { userId: user._id },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        const token = await issueSessionTokens({ db, userId: user._id, res });
 
         res.json({
             message: 'Login successful',
             token,
             userId: user._id,
-            name: user.name
+            name: user.name || name,
+            email: user.email
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-module.exports = { register, login, googleLogin, verifyEmail, requestPasswordReset, resetPassword };
+const refresh = async (req, res) => {
+    try {
+        const cookies = parseCookies(req.headers.cookie);
+        const rawToken = cookies[REFRESH_COOKIE_NAME];
+        if (!rawToken) {
+            clearRefreshCookie(res);
+            return res.status(401).json({ message: 'Refresh token missing' });
+        }
+
+        const db = getDb();
+        const rotated = await rotateRefreshToken({ db, rawToken, res });
+        if (!rotated) {
+            return res.status(401).json({ message: 'Invalid or expired refresh token' });
+        }
+
+        const user = await db.collection('users').findOne(
+            { _id: rotated.userId },
+            { projection: { name: 1, email: 1 } }
+        );
+        if (!user) {
+            await revokeAllUserRefreshTokens({ db, userId: rotated.userId });
+            clearRefreshCookie(res);
+            return res.status(401).json({ message: 'User not found' });
+        }
+
+        return res.json({
+            token: rotated.accessToken,
+            userId: user._id,
+            name: user.name,
+            email: user.email
+        });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+const logout = async (req, res) => {
+    try {
+        const cookies = parseCookies(req.headers.cookie);
+        const rawToken = cookies[REFRESH_COOKIE_NAME];
+        if (rawToken) {
+            const db = getDb();
+            await revokeRefreshToken({ db, rawToken });
+        }
+        clearRefreshCookie(res);
+        return res.status(200).json({ message: 'Logged out successfully' });
+    } catch (error) {
+        clearRefreshCookie(res);
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { register, login, googleLogin, refresh, logout, verifyEmail, requestPasswordReset, resetPassword };

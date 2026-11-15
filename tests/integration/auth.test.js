@@ -3,7 +3,9 @@ jest.mock('../../src/utils/sendEmailSmart', () => jest.fn().mockResolvedValue({ 
 
 const request = require('supertest');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
+const { REFRESH_COOKIE_NAME, REFRESH_COLLECTION } = require('../../src/utils/refreshToken');
 const sendEmailSmart = require('../../src/utils/sendEmailSmart');
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const { getDb } = require('../../src/config/db');
@@ -326,5 +328,150 @@ describe('POST /api/auth/reset-password/:token (SECURITY FIX #3)', () => {
       .send({ password: '123' });
 
     expect(res.status).toBe(400); // previously unvalidated — a 1-char reset was possible
+  });
+});
+
+describe('Refresh token cookie flow (POST /api/auth/refresh & /logout)', () => {
+  const extractRefreshCookie = (res) => {
+    const cookies = res.headers['set-cookie'] || [];
+    return cookies.find((c) => c.startsWith(`${REFRESH_COOKIE_NAME}=`));
+  };
+
+  test('login sets an HttpOnly refresh cookie and returns a 15m access token + email', async () => {
+    await seedUser({ email: 'cookie@test.com', name: 'Cookie User' });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'cookie@test.com', password: 'password123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe('cookie@test.com');
+    expect(res.body.name).toBe('Cookie User');
+
+    const decoded = jwt.verify(res.body.token, process.env.JWT_SECRET);
+    expect(decoded.exp - decoded.iat).toBe(15 * 60);
+
+    const refreshCookie = extractRefreshCookie(res);
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain('HttpOnly');
+    expect(refreshCookie).toContain('Path=/api/auth');
+
+    const storedTokens = await db.collection(REFRESH_COLLECTION).countDocuments();
+    expect(storedTokens).toBe(1);
+  });
+
+  test('POST /api/auth/refresh issues a new access token and rotates the refresh cookie', async () => {
+    await seedUser({ email: 'rotate@test.com', name: 'Rotate User' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'rotate@test.com', password: 'password123' });
+
+    const firstCookie = extractRefreshCookie(loginRes).split(';')[0];
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [firstCookie]);
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.token).toBeTruthy();
+    expect(refreshRes.body.email).toBe('rotate@test.com');
+    expect(refreshRes.body.name).toBe('Rotate User');
+
+    const rotatedCookie = extractRefreshCookie(refreshRes);
+    expect(rotatedCookie).toBeDefined();
+    expect(rotatedCookie.split(';')[0]).not.toBe(firstCookie);
+
+    // Old single-use refresh token cannot be replayed
+    const replayRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [firstCookie]);
+    expect(replayRes.status).toBe(401);
+
+    // New rotated refresh token still works
+    const secondRefreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [rotatedCookie.split(';')[0]]);
+    expect(secondRefreshRes.status).toBe(200);
+  });
+
+  test('POST /api/auth/refresh returns 401 when cookie is missing, invalid, or expired', async () => {
+    const missingRes = await request(app).post('/api/auth/refresh');
+    expect(missingRes.status).toBe(401);
+
+    const invalidRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [`${REFRESH_COOKIE_NAME}=not-a-valid-token`]);
+    expect(invalidRes.status).toBe(401);
+
+    const userId = await seedUser({ email: 'expired@test.com' });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'expired@test.com', password: 'password123' });
+    const expiredCookie = extractRefreshCookie(loginRes).split(';')[0];
+
+    // Force DB record to be expired
+    await db.collection(REFRESH_COLLECTION).updateMany(
+      { userId },
+      { $set: { expiresAt: new Date(Date.now() - 1000) } }
+    );
+
+    const expiredRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [expiredCookie]);
+    expect(expiredRes.status).toBe(401);
+  });
+
+  test('POST /api/auth/logout revokes the refresh token in DB and clears the cookie', async () => {
+    await seedUser({ email: 'logout@test.com' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'logout@test.com', password: 'password123' });
+
+    const cookiePair = extractRefreshCookie(loginRes).split(';')[0];
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments()).toBe(1);
+
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', [cookiePair]);
+
+    expect(logoutRes.status).toBe(200);
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments()).toBe(0);
+
+    const clearedCookie = extractRefreshCookie(logoutRes);
+    expect(clearedCookie).toContain(`${REFRESH_COOKIE_NAME}=;`);
+
+    const postLogoutRefresh = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [cookiePair]);
+    expect(postLogoutRefresh.status).toBe(401);
+  });
+
+  test('resetPassword revokes active refresh tokens for the user', async () => {
+    const userId = await seedUser({
+      email: 'resetrevoke@test.com',
+      resetPasswordToken: 'reset-tok',
+      resetPasswordExpiry: new Date(Date.now() + 3600 * 1000),
+    });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'resetrevoke@test.com', password: 'password123' });
+    const cookiePair = extractRefreshCookie(loginRes).split(';')[0];
+
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments({ userId })).toBe(1);
+
+    await request(app)
+      .post('/api/auth/reset-password/reset-tok')
+      .send({ password: 'newPassword123' })
+      .expect(200);
+
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments({ userId })).toBe(0);
+
+    await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', [cookiePair])
+      .expect(401);
   });
 });

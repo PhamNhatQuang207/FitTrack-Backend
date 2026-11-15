@@ -1,4 +1,6 @@
 const request = require('supertest');
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+const { InMemoryTransport } = require('@modelcontextprotocol/sdk/inMemory.js');
 
 jest.mock('../../src/services/ai/geminiClient', () => ({
   isGeminiConfigured: jest.fn(() => true),
@@ -16,6 +18,7 @@ const { KNOWLEDGE_COLLECTION } = require('../../src/services/rag/knowledgeSearch
 const app = require('../../src/app');
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const { createUserAndToken, authHeader } = require('../setup/helpers');
+const { createFitTrackMcpServer } = require('../../src/mcp/createFitTrackMcpServer');
 
 let db;
 
@@ -113,5 +116,32 @@ describe('RAG MCP Tool & Grounded Citations (integration)', () => {
 
     const savedConv = await db.collection('ai-conversations').findOne({ userId });
     expect(savedConv.messages[1].citations).toHaveLength(1);
+  });
+
+  test('search_fitness_knowledge returns isError JSON when searchKnowledge / embedText rejects', async () => {
+    const { userId } = await createUserAndToken(db);
+    embedText.mockRejectedValueOnce(new Error('Embedding service unavailable'));
+
+    const mcpServer = createFitTrackMcpServer({ db, userId: userId.toString() });
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([
+      mcpServer.connect(serverTransport),
+      client.connect(clientTransport)
+    ]);
+
+    try {
+      const res = await client.callTool({
+        name: 'search_fitness_knowledge',
+        arguments: { query: 'creatine dosage' }
+      });
+
+      expect(res.isError).toBe(true);
+      const payload = JSON.parse(res.content[0].text);
+      expect(payload).toEqual({ error: 'Embedding service unavailable' });
+    } finally {
+      await client.close();
+      await mcpServer.close();
+    }
   });
 });

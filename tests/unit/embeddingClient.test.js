@@ -24,7 +24,11 @@ describe('embeddingClient (unit)', () => {
   });
 
   afterAll(() => {
-    process.env.GEMINI_API_KEY = originalKey;
+    if (originalKey === undefined) {
+      delete process.env.GEMINI_API_KEY;
+    } else {
+      process.env.GEMINI_API_KEY = originalKey;
+    }
   });
 
   test('embedText requests 768-dim embedding and L2-normalizes the returned vector', async () => {

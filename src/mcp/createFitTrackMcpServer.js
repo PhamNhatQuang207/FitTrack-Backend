@@ -422,7 +422,7 @@ function createFitTrackMcpServer({ db, userId }) {
     }
   );
 
-  // 7. save_user_memory
+  // 8. save_user_memory
   server.tool(
     'save_user_memory',
     'Save or update a concise long-term fitness memory fact about the user (goal, schedule, equipment, injury, preference)',
@@ -481,7 +481,7 @@ function createFitTrackMcpServer({ db, userId }) {
     }
   );
 
-  // 8. delete_user_memory
+  // 9. delete_user_memory
   server.tool(
     'delete_user_memory',
     'Delete an outdated user fitness memory fact by category and key',
@@ -520,28 +520,32 @@ function createFitTrackMcpServer({ db, userId }) {
       limit: z.number().int().min(1).max(8).optional()
     },
     async ({ query, topic, limit = 4 }) => {
-      const { modeUsed, results } = await searchKnowledge({
-        db,
-        query,
-        topic,
-        limit
-      });
-
-      if (results.length === 0) {
-        return toMcpJson({
-          count: 0,
-          modeUsed,
-          citations: [],
-          message:
-            'No sufficiently relevant peer-reviewed evidence chunks found for this query. Do not invent studies or citations.'
+      try {
+        const { modeUsed, results } = await searchKnowledge({
+          db,
+          query,
+          topic,
+          limit
         });
-      }
 
-      return toMcpJson({
-        count: results.length,
-        modeUsed,
-        citations: results
-      });
+        if (results.length === 0) {
+          return toMcpJson({
+            count: 0,
+            modeUsed,
+            citations: [],
+            message:
+              'No sufficiently relevant peer-reviewed evidence chunks found for this query. Do not invent studies or citations.'
+          });
+        }
+
+        return toMcpJson({
+          count: results.length,
+          modeUsed,
+          citations: results
+        });
+      } catch (err) {
+        return toMcpJson({ error: err.message || 'Failed to search knowledge base' }, true);
+      }
     }
   );
 

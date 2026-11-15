@@ -50,7 +50,7 @@ describe('FitTrack MCP Server & /mcp Endpoint (integration)', () => {
     expect(res.text).toContain('search_exercises');
   });
 
-  test('lists all 8 tools via InMemoryTransport', async () => {
+  test('lists all 10 tools via InMemoryTransport', async () => {
     const { userId } = await createUserAndToken(db);
     const { client, mcpServer } = await connectInMemoryClient(userId);
 

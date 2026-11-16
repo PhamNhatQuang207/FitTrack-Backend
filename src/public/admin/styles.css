@@ -545,6 +545,6 @@ body.ft-page {
 
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
-.animate-slide-up { animation: slide-up 0.2s ease-out both; }
+.animate-slide-up { animation: slide-up 0.2s ease-out; }

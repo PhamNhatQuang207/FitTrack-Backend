@@ -42,7 +42,7 @@ const createWorkoutSession = async (req, res) => {
 
         // Validation
         if (!name || !exercises) {
-            return res.status(400).json({ message: 'Workout name and exercises array are required' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Workout name and exercises array are required' });
         }
 
         // Check if an active session already exists for this schedule and day
@@ -149,7 +149,7 @@ const createWorkoutSession = async (req, res) => {
             sessionId: result.insertedId
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -178,7 +178,7 @@ const getWorkoutSessions = async (req, res) => {
             userId: undefined
         })));
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -195,7 +195,7 @@ const getWorkoutSessionById = async (req, res) => {
         });
 
         if (!session) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         res.json({
@@ -206,7 +206,7 @@ const getWorkoutSessionById = async (req, res) => {
             userId: undefined
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -231,12 +231,12 @@ const updateWorkoutSession = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         res.json({ message: 'Workout session updated successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -258,12 +258,12 @@ const startWorkoutSession = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         res.json({ message: 'Workout session started' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -286,12 +286,12 @@ const completeWorkoutSession = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         res.json({ message: 'Workout session completed' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -309,7 +309,7 @@ const logSet = async (req, res) => {
         });
 
         if (!session) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         // Find the exercise in the session
@@ -318,7 +318,7 @@ const logSet = async (req, res) => {
         );
 
         if (exerciseIndex === -1) {
-            return res.status(404).json({ message: 'Exercise not found in session' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Exercise not found in session' });
         }
 
         // Add the set
@@ -341,7 +341,7 @@ const logSet = async (req, res) => {
 
         res.json({ message: 'Set logged successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -358,12 +358,12 @@ const deleteWorkoutSession = async (req, res) => {
         });
 
         if (result.deletedCount === 0) {
-            return res.status(404).json({ message: 'Workout session not found' });
+            return res.status(404).json({ code: 'WORKOUT_NOT_FOUND', message: 'Workout session not found' });
         }
 
         res.json({ message: 'Workout session deleted successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

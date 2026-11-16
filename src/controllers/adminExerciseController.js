@@ -1,5 +1,6 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/db');
+const { publicDataCache } = require('../utils/memoryCache');
 
 const mapExercise = (ex) => ({
   ...ex,
@@ -35,6 +36,7 @@ const createExercise = async (req, res) => {
     };
 
     const { insertedId } = await db.collection('exercises').insertOne(doc);
+    publicDataCache.delByPrefix('exercises:');
     res.status(201).json(mapExercise({ ...doc, _id: insertedId }));
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -67,6 +69,7 @@ const updateExercise = async (req, res) => {
       return res.status(404).json({ message: 'Exercise not found' });
     }
 
+    publicDataCache.delByPrefix('exercises:');
     res.json(mapExercise(result));
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -91,6 +94,7 @@ const toggleExerciseStatus = async (req, res) => {
       return res.status(404).json({ message: 'Exercise not found' });
     }
 
+    publicDataCache.delByPrefix('exercises:');
     res.json(mapExercise(result));
   } catch (error) {
     res.status(500).json({ message: error.message });

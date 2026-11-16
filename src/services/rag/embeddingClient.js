@@ -1,5 +1,6 @@
 const { GoogleGenAI } = require('@google/genai');
 const { normalizeVector } = require('./vectorMath');
+const { ragEmbeddingCache } = require('../../utils/memoryCache');
 
 const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-2';
 const EMBEDDING_DIMENSIONS = 768;
@@ -18,6 +19,14 @@ async function embedText(text, { taskType = 'RETRIEVAL_QUERY', title } = {}) {
   const cleanText = String(text || '').trim();
   if (!cleanText) {
     throw new Error('Cannot embed empty text');
+  }
+
+  const cacheKey = taskType === 'RETRIEVAL_QUERY'
+    ? `${EMBEDDING_MODEL}:${cleanText.toLowerCase().replace(/\s+/g, ' ')}`
+    : null;
+  if (cacheKey) {
+    const cached = ragEmbeddingCache.get(cacheKey);
+    if (cached) return cached;
   }
 
   const ai = getAiClient();
@@ -39,7 +48,11 @@ async function embedText(text, { taskType = 'RETRIEVAL_QUERY', title } = {}) {
   if (!Array.isArray(values) || values.length === 0) {
     throw new Error('Gemini embedContent returned empty embedding vector');
   }
-  return normalizeVector(values);
+  const normalized = normalizeVector(values);
+  if (cacheKey) {
+    ragEmbeddingCache.set(cacheKey, normalized);
+  }
+  return normalized;
 }
 
 async function embedDocuments(items) {

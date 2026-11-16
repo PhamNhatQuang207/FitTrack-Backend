@@ -1,17 +1,30 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
+const { publicDataCache } = require('../utils/memoryCache');
+
+const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 
 // Get all exercises
 const getAllExercises = async (req, res) => {
     try {
+        const cacheKey = 'exercises:all';
+        const cached = publicDataCache.get(cacheKey);
+        if (cached) {
+            res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+            return res.json(cached);
+        }
+
         const db = getDb();
         const exercises = await db.collection('exercises').find({ isActive: { $ne: false } }).toArray();
         
-        res.json(exercises.map(ex => ({
+        const payload = exercises.map(ex => ({
             ...ex,
             id: ex._id,
             _id: undefined
-        })));
+        }));
+        publicDataCache.set(cacheKey, payload);
+        res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+        res.json(payload);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -21,23 +34,33 @@ const getAllExercises = async (req, res) => {
 const getExercisesByCategory = async (req, res) => {
     try {
         const { category } = req.params;
-        const db = getDb();
         
         // Convert category format (e.g., "middle_back" to "Middle Back")
         const formattedCategory = category
             .split('_')
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' ');
-        
+
+        const cacheKey = `exercises:category:${formattedCategory}`;
+        const cached = publicDataCache.get(cacheKey);
+        if (cached) {
+            res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+            return res.json(cached);
+        }
+
+        const db = getDb();
         const exercises = await db.collection('exercises')
             .find({ category: formattedCategory, isActive: { $ne: false } })
             .toArray();
         
-        res.json(exercises.map(ex => ({
+        const payload = exercises.map(ex => ({
             ...ex,
             id: ex._id,
             _id: undefined
-        })));
+        }));
+        publicDataCache.set(cacheKey, payload);
+        res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+        res.json(payload);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -87,8 +110,14 @@ const searchExercises = async (req, res) => {
 const getExerciseById = async (req, res) => {
     try {
         const { id } = req.params;
+        const cacheKey = `exercises:id:${id}`;
+        const cached = publicDataCache.get(cacheKey);
+        if (cached) {
+            res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+            return res.json(cached);
+        }
+
         const db = getDb();
-        
         const exercise = await db.collection('exercises')
             .findOne({ _id: new ObjectId(id) });
         
@@ -96,11 +125,14 @@ const getExerciseById = async (req, res) => {
             return res.status(404).json({ message: 'Exercise not found' });
         }
         
-        res.json({
+        const payload = {
             ...exercise,
             id: exercise._id,
             _id: undefined
-        });
+        };
+        publicDataCache.set(cacheKey, payload);
+        res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+        res.json(payload);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

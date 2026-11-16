@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kiến trúc FitTrack AI Coach & Hybrid RAG",
+    "locale": "vi",
+    "output": ".archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/PhamNhatQuang207/FitTrack-Backend.git",
+      "provider": "github",
+      "revision": "b3cd473d3a0622b31fd1cec3877ce75d30ce3744"
+    },
+    "views": [
+      {
+        "id": "chat-flow",
+        "label": "Luồng Chat AI Coach",
+        "focus": ["user", "frontend-ui", "ai-api", "agent-loop", "gemini-api"],
+        "note": "Người dùng gửi câu hỏi qua Widget; Express xác thực JWT và chạy vòng lặp tool-call với Gemini."
+      },
+      {
+        "id": "rag-pipeline",
+        "label": "Hybrid RAG & Atlas",
+        "focus": ["mcp-server", "rag-search", "rag-ingest", "gemini-api", "atlas-db"],
+        "note": "Tìm kiếm kết hợp Vector 768d (SUBTYPE_VECTOR) + Lexical RRF qua Atlas hoặc fallback local."
+      },
+      {
+        "id": "mcp-gateway",
+        "label": "MCP Tools & Gateway",
+        "focus": ["ext-mcp", "mcp-http", "agent-loop", "mcp-server", "rag-search"],
+        "note": "Dùng chung FitTrack MCP Server (10 tools) cho cả Agent nội bộ (InMemory) lẫn client ngoài (/mcp)."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Người dùng FitTrack",
+      "sublabel": "Trình duyệt web",
+      "pos": [40, 55],
+      "size": [135, 58]
+    },
+    {
+      "id": "frontend-ui",
+      "type": "frontend",
+      "label": "AI Coach Widget",
+      "sublabel": "Markdown + Sources (N)",
+      "tag": "FitTrack-Frontend",
+      "pos": [220, 55],
+      "size": [165, 60]
+    },
+    {
+      "id": "ext-mcp",
+      "type": "external",
+      "label": "External MCP Client",
+      "sublabel": "Streamable HTTP",
+      "tag": "X-Mcp-Api-Key",
+      "pos": [220, 205],
+      "size": [165, 58]
+    },
+    {
+      "id": "ai-api",
+      "type": "security",
+      "label": "AI Chat API",
+      "sublabel": "JWT + Limit + Guard",
+      "sources": [
+        { "path": "src/routes/aiRoutes.js", "line": 18, "end_line": 24, "label": "AI routes" },
+        { "path": "src/controllers/aiController.js", "line": 29, "end_line": 80, "label": "Chat controller" },
+        { "path": "src/controllers/aiController.js", "line": 92, "end_line": 135, "label": "Persist citations" }
+      ],
+      "pos": [525, 55],
+      "size": [165, 60]
+    },
+    {
+      "id": "agent-loop",
+      "type": "backend",
+      "label": "Agent Loop Service",
+      "sublabel": "Tool Loop + Citations",
+      "tag": "executionLoopGuard",
+      "sources": [
+        { "path": "src/services/ai/aiAgentService.js", "line": 26, "end_line": 41, "label": "InMemory MCP setup" },
+        { "path": "src/services/ai/aiAgentService.js", "line": 64, "end_line": 193, "label": "Tool call loop" }
+      ],
+      "pos": [805, 55],
+      "size": [165, 60]
+    },
+    {
+      "id": "mcp-http",
+      "type": "security",
+      "label": "MCP HTTP Gateway",
+      "sublabel": "POST /mcp + Key Auth",
+      "sources": [
+        { "path": "src/app.js", "line": 61, "end_line": 61, "label": "Mount /mcp" },
+        { "path": "src/mcp/mcpHttpHandler.js", "line": 7, "end_line": 26, "label": "Streamable transport" }
+      ],
+      "pos": [525, 205],
+      "size": [165, 58]
+    },
+    {
+      "id": "mcp-server",
+      "type": "backend",
+      "label": "FitTrack MCP Server",
+      "sublabel": "10 Tools + Zod Schema",
+      "sources": [
+        { "path": "src/mcp/createFitTrackMcpServer.js", "line": 54, "end_line": 63, "label": "McpServer init" },
+        { "path": "src/mcp/createFitTrackMcpServer.js", "line": 513, "end_line": 550, "label": "Knowledge tool" }
+      ],
+      "pos": [805, 205],
+      "size": [165, 60]
+    },
+    {
+      "id": "rag-ingest",
+      "type": "backend",
+      "label": "Knowledge Ingest",
+      "sublabel": "Chunker + Float32 Vec",
+      "tag": "npm run ingest:knowledge",
+      "sources": [
+        { "path": "src/scripts/ingestKnowledge.js", "line": 11, "end_line": 64, "label": "Idempotent upsert" },
+        { "path": "src/services/rag/chunker.js", "line": 84, "end_line": 112, "label": "Section chunking" },
+        { "path": "src/services/rag/vectorMath.js", "line": 19, "end_line": 31, "label": "SUBTYPE_VECTOR" }
+      ],
+      "pos": [525, 355],
+      "size": [165, 62]
+    },
+    {
+      "id": "rag-search",
+      "type": "backend",
+      "label": "Hybrid RAG Search",
+      "sublabel": "Vector + Lexical + RRF",
+      "tag": "auto / atlas / local",
+      "sources": [
+        { "path": "src/services/rag/knowledgeSearchService.js", "line": 146, "end_line": 225, "label": "Local & Atlas RRF" },
+        { "path": "src/services/rag/knowledgeSearchService.js", "line": 227, "end_line": 271, "label": "Auto fallback mode" },
+        { "path": "src/services/rag/vectorMath.js", "line": 60, "end_line": 83, "label": "Reciprocal Rank Fusion" }
+      ],
+      "pos": [805, 355],
+      "size": [165, 62]
+    },
+    {
+      "id": "gemini-api",
+      "type": "external",
+      "label": "Google Gemini API",
+      "sublabel": "gemini-2.5-flash+Embed",
+      "tag": "768 dimensions",
+      "sources": [
+        { "path": "src/services/ai/geminiClient.js", "line": 15, "end_line": 33, "label": "Agent generateContent" },
+        { "path": "src/services/rag/embeddingClient.js", "line": 17, "end_line": 43, "label": "768-dim embedContent" }
+      ],
+      "pos": [1075, 55],
+      "size": [160, 62]
+    },
+    {
+      "id": "atlas-db",
+      "type": "database",
+      "label": "MongoDB Atlas M0",
+      "sublabel": "FitTrackDB + Vectors",
+      "tag": "Vector + Text Index",
+      "sources": [
+        { "path": "src/services/rag/knowledgeSearchService.js", "line": 57, "end_line": 108, "label": "Atlas $vectorSearch/$search" }
+      ],
+      "pos": [805, 505],
+      "size": [165, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "FitTrack-Backend (Node.js / Express)",
+      "wraps": ["ai-api", "agent-loop", "mcp-http", "mcp-server", "rag-ingest", "rag-search"]
+    }
+  ],
+  "connections": [
+    { "id": "user-chat", "from": "user", "to": "frontend-ui", "variant": "emphasis" },
+    { "id": "fe-api", "from": "frontend-ui", "to": "ai-api", "label": "POST /api/ai/chat", "variant": "emphasis" },
+    { "id": "api-agent", "from": "ai-api", "to": "agent-loop", "label": "runAiChatTurn", "variant": "emphasis" },
+    { "id": "agent-gemini", "from": "agent-loop", "to": "gemini-api", "label": "functionCall", "variant": "emphasis" },
+    { "id": "agent-mcp", "from": "agent-loop", "to": "mcp-server", "label": "InMemory MCP", "fromSide": "bottom", "toSide": "top", "variant": "emphasis" },
+    { "id": "ext-gateway", "from": "ext-mcp", "to": "mcp-http", "label": "POST /mcp", "variant": "security" },
+    { "id": "gateway-mcp", "from": "mcp-http", "to": "mcp-server", "label": "StreamableHTTP" },
+    { "id": "mcp-rag", "from": "mcp-server", "to": "rag-search", "label": "knowledge tool", "fromSide": "bottom", "toSide": "top" },
+    { "id": "rag-embed", "from": "rag-search", "to": "gemini-api", "label": "embedText 768d", "fromSide": "right", "toSide": "bottom" },
+    { "id": "rag-atlas", "from": "rag-search", "to": "atlas-db", "label": "$vectorSearch+$search", "fromSide": "bottom", "toSide": "top", "variant": "emphasis" },
+    { "id": "ingest-atlas", "from": "rag-ingest", "to": "atlas-db", "label": "upsert chunks", "fromSide": "bottom", "toSide": "left", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Frontend UI (FitTrack-Frontend)",
+      "items": [
+        "AiCoachWidget.jsx + MarkdownMessage.jsx (repo sibling commit 349df41)",
+        "Render Markdown an toàn (không dangerouslySetInnerHTML) và chặn link ngoài http/https",
+        "Hiển thị panel Sources (N) kèm trích dẫn DOI, tác giả, năm và đoạn trích khoa học"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Agent & MCP Server",
+      "items": [
+        "10 MCP tools dùng chung giữa Agent nội bộ (InMemoryTransport) và Streamable HTTP (/mcp)",
+        "executionLoopGuard giới hạn số bước, chống gọi trùng tool và bảo vệ schema đầu ra",
+        "aiController lưu assistantMessage.citations chống trùng theo chunkId vào ai-conversations"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Hybrid RAG & MongoDB Atlas",
+      "items": [
+        "6 tài liệu khoa học thể thao (25 chunks) được embed 768 chiều bằng gemini-embedding-2",
+        "Lưu dạng BSON Binary.SUBTYPE_VECTOR; truy vấn song song Vector + Lucene English + RRF",
+        "Tự động fallback sang tìm kiếm local khi môi trường test/dev không có Atlas Search"
+      ]
+    }
+  ]
+}

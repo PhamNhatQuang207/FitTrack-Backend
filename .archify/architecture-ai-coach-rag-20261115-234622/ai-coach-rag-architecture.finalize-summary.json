@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/candidate.json",
+    "sha256": "a1935ee9611b71acd34b913bf7a01a9ef6031f5c3f53c19cfdc3803bf617d31a",
+    "bytes": 8895
+  },
+  "artifact": {
+    "path": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.html",
+    "sha256": "60ab1f6c35c93e79f5a2f8e7fcae699eca256b63bbd59ec0256960f8e68284ac",
+    "bytes": 857688
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [
+    {
+      "code": "i18n/locale-fallback",
+      "severity": "warning",
+      "message": "meta.locale \"vi\" has no bundled catalog and no usable meta.translations; the Viewer chrome and <html lang> fall back to English.",
+      "subject": {
+        "diagramType": "architecture",
+        "path": "/meta/locale"
+      },
+      "evidence": {
+        "locale": "vi",
+        "bundledLocales": [
+          "en",
+          "zh-CN",
+          "zh-TW",
+          "es",
+          "ko",
+          "ar"
+        ]
+      },
+      "supportedFixes": [
+        "Supply meta.translations for this locale.",
+        "Use a bundled locale: en, zh-CN, zh-TW, es, ko, ar."
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.finalize.json",
+    "summaryReceipt": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-15T16:48:41.303Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3666,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

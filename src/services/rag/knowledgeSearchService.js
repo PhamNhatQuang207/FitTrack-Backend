@@ -4,6 +4,7 @@ const {
   cosineSimilarity,
   reciprocalRankFusion
 } = require('./vectorMath');
+const { ragChunksCache } = require('../../utils/memoryCache');
 
 const KNOWLEDGE_COLLECTION = 'knowledge-chunks';
 const ALLOWED_TOPICS = ['training', 'nutrition', 'supplements', 'recovery'];
@@ -144,26 +145,34 @@ function formatResult(doc, score) {
 }
 
 async function runLocalHybridSearch({ db, query, queryVector, topic, limit, minScore }) {
-  const filter = topic && ALLOWED_TOPICS.includes(topic) ? { topic } : {};
-  const docs = await db.collection(KNOWLEDGE_COLLECTION).find(filter).toArray();
-  if (docs.length === 0) {
+  const cacheKey = `local-chunks:${topic && ALLOWED_TOPICS.includes(topic) ? topic : 'all'}`;
+  let preparedDocs = ragChunksCache.get(cacheKey);
+  if (!preparedDocs) {
+    const filter = topic && ALLOWED_TOPICS.includes(topic) ? { topic } : {};
+    const docs = await db.collection(KNOWLEDGE_COLLECTION).find(filter).toArray();
+    preparedDocs = docs.map((doc) => ({
+      doc,
+      vector: fromFloat32Binary(doc.embedding)
+    }));
+    ragChunksCache.set(cacheKey, preparedDocs);
+  }
+  if (preparedDocs.length === 0) {
     return [];
   }
 
   const queryTokens = tokenize(query);
 
-  const vectorScored = docs
-    .map((doc) => {
-      const vec = fromFloat32Binary(doc.embedding);
-      const sim = cosineSimilarity(queryVector, vec);
+  const vectorScored = preparedDocs
+    .map(({ doc, vector }) => {
+      const sim = cosineSimilarity(queryVector, vector);
       return { ...doc, vectorScore: sim };
     })
     .filter((doc) => doc.vectorScore >= minScore)
     .sort((a, b) => b.vectorScore - a.vectorScore)
     .slice(0, limit * 3);
 
-  const lexicalScored = docs
-    .map((doc) => ({
+  const lexicalScored = preparedDocs
+    .map(({ doc }) => ({
       ...doc,
       lexicalScore: scoreLexicalMatch(queryTokens, doc.content)
     }))
@@ -270,6 +279,10 @@ async function searchKnowledge({
   }
 }
 
+function clearKnowledgeCache() {
+  ragChunksCache.clear();
+}
+
 module.exports = {
   KNOWLEDGE_COLLECTION,
   ALLOWED_TOPICS,
@@ -277,5 +290,6 @@ module.exports = {
   tokenize,
   buildAtlasVectorPipeline,
   buildAtlasTextPipeline,
-  searchKnowledge
+  searchKnowledge,
+  clearKnowledgeCache
 };

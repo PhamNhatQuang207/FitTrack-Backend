@@ -1,5 +1,6 @@
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { connectDB, getDb, closeDB } = require('../../src/config/db');
+const { clearAllCaches } = require('../../src/utils/memoryCache');
 
 let mongod;
 
@@ -28,6 +29,7 @@ const clearDb = async () => {
   for (const c of collections) {
     await db.collection(c.name).deleteMany({});
   }
+  clearAllCaches();
 };
 
 module.exports = { startTestDb, stopTestDb, clearDb };

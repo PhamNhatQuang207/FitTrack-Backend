@@ -23,7 +23,7 @@ function sanitizeJsonSchemaForGemini(schema) {
   return clone;
 }
 
-async function runAiChatTurn({ db, userId, historyMessages, userText, memories }) {
+async function runAiChatTurn({ db, userId, historyMessages, userText, memories, lang = 'en' }) {
   const mcpServer = createFitTrackMcpServer({ db, userId: userId.toString() });
   const mcpClient = new Client({ name: 'fittrack-internal-agent', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -58,7 +58,7 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       }
     ];
 
-    const systemInstruction = buildSystemPrompt(memories);
+    const systemInstruction = buildSystemPrompt(memories, lang);
     let finalAssistantText = '';
 
     while (true) {
@@ -66,7 +66,9 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       if (!stepCheck.ok) {
         if (!finalAssistantText) {
           finalAssistantText =
-            'I have compiled the information from your training data. Please check the results below!';
+            lang === 'vi'
+              ? 'Mình đã tổng hợp thông tin từ dữ liệu tập luyện của bạn. Vui lòng xem kết quả bên dưới!'
+              : 'I have compiled the information from your training data. Please check the results below!';
         }
         break;
       }
@@ -81,7 +83,9 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories }
       if (functionCalls.length === 0) {
         finalAssistantText =
           (turn.text || '').trim() ||
-          'I have processed your request. Please check the details below!';
+          (lang === 'vi'
+            ? 'Mình đã xử lý yêu cầu của bạn. Vui lòng kiểm tra chi tiết bên dưới!'
+            : 'I have processed your request. Please check the details below!');
         break;
       }
 

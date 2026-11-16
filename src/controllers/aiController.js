@@ -76,7 +76,8 @@ const chatWithAi = async (req, res) => {
       userId: userObjectId,
       historyMessages: priorMessages,
       userText: guardResult.sanitizedMessage,
-      memories
+      memories,
+      lang: req.lang || 'en'
     });
 
     const now = new Date();

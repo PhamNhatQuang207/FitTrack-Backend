@@ -296,6 +296,7 @@ describe('/api/ai/* Chat, Slot-Filling & Apply-Plan (integration)', () => {
       .set(authHeader(token))
       .send({ conversationId: '123-invalid', message: 'Hello' });
     expect(resInvalid.status).toBe(400);
+    expect(resInvalid.body.code).toBe('VALIDATION_ERROR');
 
     // 4. Non-existent conversationId -> 404
     const resMissing = await request(app)
@@ -303,6 +304,7 @@ describe('/api/ai/* Chat, Slot-Filling & Apply-Plan (integration)', () => {
       .set(authHeader(token))
       .send({ conversationId: new ObjectId().toString(), message: 'Hello' });
     expect(resMissing.status).toBe(404);
+    expect(resMissing.body.code).toBe('AI_CONVERSATION_NOT_FOUND');
   });
 
   test('applyDraftPlan handles error conditions gracefully', async () => {
@@ -313,12 +315,14 @@ describe('/api/ai/* Chat, Slot-Filling & Apply-Plan (integration)', () => {
       .post('/api/ai/conversations/not-an-id/messages/msg-1/apply-plan')
       .set(authHeader(token));
     expect(invRes.status).toBe(400);
+    expect(invRes.body.code).toBe('VALIDATION_ERROR');
 
     // Non-existent conversation
     const notFoundConv = await request(app)
       .post(`/api/ai/conversations/${new ObjectId()}/messages/msg-1/apply-plan`)
       .set(authHeader(token));
     expect(notFoundConv.status).toBe(404);
+    expect(notFoundConv.body.code).toBe('AI_CONVERSATION_NOT_FOUND');
 
     // Create a conversation with message that has no draftPlan
     const convInsert = await db.collection('ai-conversations').insertOne({
@@ -337,12 +341,14 @@ describe('/api/ai/* Chat, Slot-Filling & Apply-Plan (integration)', () => {
       .post(`/api/ai/conversations/${convInsert.insertedId}/messages/nonexistent-msg/apply-plan`)
       .set(authHeader(token));
     expect(notFoundMsg.status).toBe(404);
+    expect(notFoundMsg.body.code).toBe('AI_MESSAGE_NOT_FOUND');
 
     // Message has no draft plan
     const noPlanRes = await request(app)
       .post(`/api/ai/conversations/${convInsert.insertedId}/messages/m2/apply-plan`)
       .set(authHeader(token));
     expect(noPlanRes.status).toBe(400);
+    expect(noPlanRes.body.code).toBe('VALIDATION_ERROR');
     expect(noPlanRes.body.message).toContain('No draft plan');
   });
 

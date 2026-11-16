@@ -140,6 +140,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: 'unverified@test.com', password: 'password123' });
 
     expect(res.status).toBe(401);
+    expect(res.body.code).toBe('AUTH_EMAIL_NOT_VERIFIED');
     expect(res.body.message).toMatch(/verify your email/i);
   });
 
@@ -150,6 +151,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: 'ok@test.com', password: 'wrongpass' });
 
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
     expect(res.body.message).toBe('Invalid credentials');
   });
 
@@ -159,6 +161,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: 'ghost@test.com', password: 'password123' });
 
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('AUTH_INVALID_CREDENTIALS');
     expect(res.body.message).toBe('Invalid credentials');
   });
 
@@ -169,6 +172,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: { $gt: '' }, password: 'password123' });
 
     expect(res.status).toBe(400); // validation rejects the object before it reaches the DB
+    expect(res.body.code).toBe('VALIDATION_ERROR');
     expect(res.body.token).toBeUndefined();
   });
 

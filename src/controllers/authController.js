@@ -88,7 +88,7 @@ const register = async (req, res) => {
         // which branch ran, and hand out a real user id besides.
         res.status(201).json(genericResponse);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -100,21 +100,21 @@ const login = async (req, res) => {
         // Find user by email
         const user = await db.collection('users').findOne({ email });
         if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Check if email is verified
         if (user.isVerified === false) {
-            return res.status(401).json({ message: 'Please verify your email before logging in' });
+            return res.status(401).json({ code: 'AUTH_EMAIL_NOT_VERIFIED', message: 'Please verify your email before logging in' });
         }
 
         // Check password
         if (!user.password) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie)
@@ -129,7 +129,7 @@ const login = async (req, res) => {
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -142,7 +142,7 @@ const verifyEmail = async (req, res) => {
         const user = await db.collection('users').findOne({ verificationToken: token });
         
         if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired verification token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired verification token' });
         }
 
         // Check if already verified
@@ -154,7 +154,7 @@ const verifyEmail = async (req, res) => {
         // expiry was tracked has no expiry field, and counts as expired; signing
         // up again re-sends a fresh link.
         if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
-            return res.status(400).json({ message: 'Invalid or expired verification token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired verification token' });
         }
 
         // Update user: set verified and remove token
@@ -169,7 +169,7 @@ const verifyEmail = async (req, res) => {
         res.status(200).json({ message: 'Email verified successfully! You can now log in.' });
     } catch (error) {
         console.error('Verification error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -224,7 +224,7 @@ const requestPasswordReset = async (req, res) => {
         res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
     } catch (error) {
         console.error('Password reset request error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -241,7 +241,7 @@ const resetPassword = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired reset token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired reset token' });
         }
 
         // Hash new password
@@ -262,7 +262,7 @@ const resetPassword = async (req, res) => {
         res.status(200).json({ message: 'Password reset successful! You can now log in with your new password.' });
     } catch (error) {
         console.error('Password reset error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -273,11 +273,11 @@ const googleLogin = async (req, res) => {
         try {
             payload = await verifyGoogleToken(idToken);
         } catch {
-            return res.status(401).json({ message: 'Invalid Google token' });
+            return res.status(401).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid Google token' });
         }
 
         if (!payload || !payload.email || !payload.email_verified) {
-            return res.status(401).json({ message: 'Google account email is not verified' });
+            return res.status(401).json({ code: 'AUTH_EMAIL_NOT_VERIFIED', message: 'Google account email is not verified' });
         }
 
         const email = payload.email.trim().toLowerCase();
@@ -327,7 +327,7 @@ const googleLogin = async (req, res) => {
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -337,13 +337,13 @@ const refresh = async (req, res) => {
         const rawToken = cookies[REFRESH_COOKIE_NAME];
         if (!rawToken) {
             clearRefreshCookie(res);
-            return res.status(401).json({ message: 'Refresh token missing' });
+            return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'Refresh token missing' });
         }
 
         const db = getDb();
         const rotated = await rotateRefreshToken({ db, rawToken, res });
         if (!rotated) {
-            return res.status(401).json({ message: 'Invalid or expired refresh token' });
+            return res.status(401).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired refresh token' });
         }
 
         const user = await db.collection('users').findOne(
@@ -353,7 +353,7 @@ const refresh = async (req, res) => {
         if (!user) {
             await revokeAllUserRefreshTokens({ db, userId: rotated.userId });
             clearRefreshCookie(res);
-            return res.status(401).json({ message: 'User not found' });
+            return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'User not found' });
         }
 
         return res.json({
@@ -364,7 +364,7 @@ const refresh = async (req, res) => {
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        return res.status(500).json({ message: error.message });
+        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -380,7 +380,7 @@ const logout = async (req, res) => {
         return res.status(200).json({ message: 'Logged out successfully' });
     } catch (error) {
         clearRefreshCookie(res);
-        return res.status(500).json({ message: error.message });
+        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

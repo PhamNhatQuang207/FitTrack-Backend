@@ -9,13 +9,14 @@ const logWorkout = async (req, res) => {
 
         // Validate required fields
         if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
-            return res.status(400).json({ message: 'Exercises array is required' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Exercises array is required' });
         }
 
         // Validate exercise structure
         for (const exercise of exercises) {
             if (!exercise.exerciseName || !exercise.category || !exercise.sets || !Array.isArray(exercise.sets)) {
                 return res.status(400).json({ 
+                    code: 'VALIDATION_ERROR',
                     message: 'Each exercise must have exerciseName, category, and sets array' 
                 });
             }
@@ -24,6 +25,7 @@ const logWorkout = async (req, res) => {
             for (const set of exercise.sets) {
                 if (set.setNumber === undefined || set.reps === undefined || set.weight === undefined) {
                     return res.status(400).json({ 
+                        code: 'VALIDATION_ERROR',
                         message: 'Each set must have setNumber, reps, and weight' 
                     });
                 }
@@ -54,7 +56,7 @@ const logWorkout = async (req, res) => {
             workoutId: result.insertedId 
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -71,7 +73,7 @@ const getWorkouts = async (req, res) => {
 
         res.json(workouts);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

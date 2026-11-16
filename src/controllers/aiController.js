@@ -50,14 +50,14 @@ const chatWithAi = async (req, res) => {
 
     if (conversationId) {
       if (!ObjectId.isValid(conversationId)) {
-        return res.status(400).json({ message: 'Invalid conversationId format' });
+        return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid conversationId format' });
       }
       conversation = await db.collection('ai-conversations').findOne({
         _id: new ObjectId(conversationId),
         userId: userObjectId
       });
       if (!conversation) {
-        return res.status(404).json({ message: 'Conversation not found' });
+        return res.status(404).json({ code: 'AI_CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
       }
     }
 
@@ -135,7 +135,9 @@ const chatWithAi = async (req, res) => {
     });
   } catch (error) {
     const status = error.statusCode || (error.status === 429 ? 429 : 502);
+    const code = status === 429 ? 'AI_RATE_LIMITED' : 'AI_UNAVAILABLE';
     return res.status(status).json({
+      code,
       message: error.message || 'AI Assistant encountered an upstream error.'
     });
   }
@@ -161,7 +163,7 @@ const getConversations = async (req, res) => {
       }))
     );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -169,7 +171,7 @@ const getConversationById = async (req, res) => {
   try {
     const { id } = req.params;
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid conversation ID' });
     }
     const db = getDb();
     const doc = await db.collection('ai-conversations').findOne({
@@ -177,7 +179,7 @@ const getConversationById = async (req, res) => {
       userId: new ObjectId(req.userId)
     });
     if (!doc) {
-      return res.status(404).json({ message: 'Conversation not found' });
+      return res.status(404).json({ code: 'AI_CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
     }
     return res.json({
       id: doc._id.toString(),
@@ -187,7 +189,7 @@ const getConversationById = async (req, res) => {
       messages: doc.messages || []
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -195,7 +197,7 @@ const deleteConversation = async (req, res) => {
   try {
     const { id } = req.params;
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid conversation ID' });
     }
     const db = getDb();
     const result = await db.collection('ai-conversations').deleteOne({
@@ -203,11 +205,11 @@ const deleteConversation = async (req, res) => {
       userId: new ObjectId(req.userId)
     });
     if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Conversation not found' });
+      return res.status(404).json({ code: 'AI_CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
     }
     return res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -230,7 +232,7 @@ const getMemories = async (req, res) => {
       }))
     );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -238,7 +240,7 @@ const deleteMemoryById = async (req, res) => {
   try {
     const { id } = req.params;
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid memory ID' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid memory ID' });
     }
     const db = getDb();
     const result = await db.collection('ai-memories').deleteOne({
@@ -246,11 +248,11 @@ const deleteMemoryById = async (req, res) => {
       userId: new ObjectId(req.userId)
     });
     if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Memory not found' });
+      return res.status(404).json({ code: 'AI_MEMORY_NOT_FOUND', message: 'Memory not found' });
     }
     return res.json({ message: 'Memory deleted successfully' });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -258,7 +260,7 @@ const applyDraftPlan = async (req, res) => {
   try {
     const { id, messageId } = req.params;
     if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid conversation ID' });
     }
 
     const db = getDb();
@@ -269,21 +271,22 @@ const applyDraftPlan = async (req, res) => {
     });
 
     if (!conversation) {
-      return res.status(404).json({ message: 'Conversation not found' });
+      return res.status(404).json({ code: 'AI_CONVERSATION_NOT_FOUND', message: 'Conversation not found' });
     }
 
     const msgIndex = (conversation.messages || []).findIndex((m) => m.id === messageId);
     if (msgIndex === -1) {
-      return res.status(404).json({ message: 'Message not found' });
+      return res.status(404).json({ code: 'AI_MESSAGE_NOT_FOUND', message: 'Message not found' });
     }
 
     const targetMessage = conversation.messages[msgIndex];
     if (!targetMessage.draftPlan || !targetMessage.draftPlan.plan) {
-      return res.status(400).json({ message: 'No draft plan attached to this message' });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'No draft plan attached to this message' });
     }
 
     if (targetMessage.draftPlan.appliedAt) {
       return res.status(409).json({
+        code: 'AI_PLAN_ALREADY_APPLIED',
         message: 'This draft plan has already been applied',
         planId: targetMessage.draftPlan.appliedPlanId,
         scheduleId: targetMessage.draftPlan.appliedScheduleId
@@ -294,7 +297,7 @@ const applyDraftPlan = async (req, res) => {
     const { mode, targetScheduleId, targetPlanId, plan } = targetMessage.draftPlan;
     const validation = await validateAndNormalizeDays({ db, days: plan.days });
     if (!validation.ok) {
-      return res.status(400).json({ message: validation.error });
+      return res.status(400).json({ code: 'VALIDATION_ERROR', message: validation.error });
     }
 
     const normalizedDays = validation.days;
@@ -319,7 +322,7 @@ const applyDraftPlan = async (req, res) => {
         .findOne(scheduleFilter, { sort: { startDate: -1, createdAt: -1 } });
 
       if (!activeSchedule) {
-        return res.status(404).json({ message: 'Active weekly schedule not found' });
+        return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Active weekly schedule not found' });
       }
 
       const baseMonday = activeSchedule.startDate ? getMonday(new Date(activeSchedule.startDate)) : monday;
@@ -397,7 +400,7 @@ const applyDraftPlan = async (req, res) => {
       }
     } else if (mode === 'update_plan') {
       if (!targetPlanId || !ObjectId.isValid(targetPlanId)) {
-        return res.status(400).json({ message: 'Invalid targetPlanId for update_plan' });
+        return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid targetPlanId for update_plan' });
       }
       const updateRes = await db.collection('weekly-plans').updateOne(
         { _id: new ObjectId(targetPlanId), userId: userObjectId },
@@ -411,7 +414,7 @@ const applyDraftPlan = async (req, res) => {
         }
       );
       if (updateRes.matchedCount === 0) {
-        return res.status(404).json({ message: 'Weekly plan template not found' });
+        return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan template not found' });
       }
       appliedPlanId = targetPlanId;
     } else {
@@ -503,7 +506,7 @@ const applyDraftPlan = async (req, res) => {
       scheduleId: appliedScheduleId
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -520,7 +523,7 @@ const getMcpKeyStatus = async (req, res) => {
       createdAt: user?.mcpApiKeyCreatedAt || null
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -549,7 +552,7 @@ const generateMcpKey = async (req, res) => {
       createdAt: now
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -571,7 +574,7 @@ const revokeMcpKey = async (req, res) => {
       message: 'MCP API key revoked successfully'
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
   }
 };
 

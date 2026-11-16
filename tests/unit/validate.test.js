@@ -42,6 +42,7 @@ describe('validate middleware (unit)', () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({
+      code: 'VALIDATION_ERROR',
       message: 'Validation Error',
       errors: ['Please include a valid email', 'Password is required'],
     });

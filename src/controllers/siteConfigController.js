@@ -1,4 +1,8 @@
 const { getDb } = require('../config/db');
+const { publicDataCache } = require('../utils/memoryCache');
+
+const SITE_CONFIG_CACHE_KEY = 'site-config:public';
+const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 
 const DEFAULT_CONFIG = {
   heroBackgroundUrl: '',
@@ -9,17 +13,26 @@ const DEFAULT_CONFIG = {
 
 const getPublicSiteConfig = async (req, res) => {
   try {
+    const cached = publicDataCache.get(SITE_CONFIG_CACHE_KEY);
+    if (cached) {
+      res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+      return res.json(cached);
+    }
+
     const db = getDb();
     const doc = await db.collection('site_configs').findOne({ _id: 'default' });
-    if (!doc) {
-      return res.json(DEFAULT_CONFIG);
-    }
-    res.json({
-      heroBackgroundUrl: doc.heroBackgroundUrl || '',
-      announcementBanner: doc.announcementBanner || '',
-      featuredNote: doc.featuredNote || '',
-      updatedAt: doc.updatedAt || null,
-    });
+    const payload = !doc
+      ? DEFAULT_CONFIG
+      : {
+          heroBackgroundUrl: doc.heroBackgroundUrl || '',
+          announcementBanner: doc.announcementBanner || '',
+          featuredNote: doc.featuredNote || '',
+          updatedAt: doc.updatedAt || null,
+        };
+
+    publicDataCache.set(SITE_CONFIG_CACHE_KEY, payload);
+    res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -42,6 +55,8 @@ const updateSiteConfig = async (req, res) => {
       { $set: updateDoc },
       { upsert: true }
     );
+
+    publicDataCache.del(SITE_CONFIG_CACHE_KEY);
 
     res.json({
       heroBackgroundUrl: updateDoc.heroBackgroundUrl,

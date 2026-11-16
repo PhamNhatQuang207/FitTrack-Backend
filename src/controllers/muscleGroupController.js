@@ -1,5 +1,9 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/db');
+const { publicDataCache } = require('../utils/memoryCache');
+
+const PUBLIC_CACHE_KEY = 'muscle-groups:public';
+const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 
 const DEFAULT_MUSCLE_GROUPS = [
   { name: 'Chest', order: 1 },
@@ -75,6 +79,12 @@ const cascadeCategoryRewrite = async (db, fromName, toName) => {
 
 const getPublicMuscleGroups = async (req, res) => {
   try {
+    const cached = publicDataCache.get(PUBLIC_CACHE_KEY);
+    if (cached) {
+      res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+      return res.json(cached);
+    }
+
     const db = getDb();
     await ensureSeeded(db);
     const groups = await db
@@ -82,7 +92,10 @@ const getPublicMuscleGroups = async (req, res) => {
       .find({ isActive: { $ne: false } })
       .sort({ order: 1, name: 1 })
       .toArray();
-    res.json(groups.map(mapGroup));
+    const payload = groups.map(mapGroup);
+    publicDataCache.set(PUBLIC_CACHE_KEY, payload);
+    res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -124,6 +137,7 @@ const createMuscleGroup = async (req, res) => {
       createdAt: new Date(),
     };
     const { insertedId } = await db.collection('muscle_groups').insertOne(doc);
+    publicDataCache.del(PUBLIC_CACHE_KEY);
     res.status(201).json(mapGroup({ ...doc, _id: insertedId }));
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -160,8 +174,10 @@ const updateMuscleGroup = async (req, res) => {
 
     if (updates.name && updates.name !== current.name) {
       await cascadeCategoryRewrite(db, current.name, updates.name);
+      publicDataCache.delByPrefix('exercises:');
     }
 
+    publicDataCache.del(PUBLIC_CACHE_KEY);
     res.json(mapGroup(updated));
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -186,6 +202,8 @@ const mergeMuscleGroup = async (req, res) => {
 
     await cascadeCategoryRewrite(db, source.name, target.name);
     await db.collection('muscle_groups').deleteOne({ _id: source._id });
+    publicDataCache.del(PUBLIC_CACHE_KEY);
+    publicDataCache.delByPrefix('exercises:');
 
     res.json({
       message: `Merged "${source.name}" into "${target.name}"`,

@@ -89,10 +89,11 @@ const searchExercises = async (req, res) => {
         }
 
         // Match the escaped input literally (case-insensitive)
+        const pattern = { $regex: escapeRegex(trimmed), $options: 'i' };
         const exercises = await db.collection('exercises')
             .find({
-                name: { $regex: escapeRegex(trimmed), $options: 'i' },
-                isActive: { $ne: false }
+                isActive: { $ne: false },
+                $or: [{ name: pattern }, { 'translations.vi.name': pattern }],
             })
             .toArray();
         

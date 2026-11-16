@@ -8,6 +8,20 @@ const mapExercise = (ex) => ({
   _id: undefined,
 });
 
+function sanitizeExerciseTranslations(raw) {
+  const viName = typeof raw?.vi?.name === 'string' ? raw.vi.name.trim() : '';
+  const viInstructions = Array.isArray(raw?.vi?.instructions)
+    ? raw.vi.instructions.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+  if (!viName && viInstructions.length === 0) return {};
+  return {
+    vi: {
+      ...(viName ? { name: viName } : {}),
+      ...(viInstructions.length ? { instructions: viInstructions } : {}),
+    },
+  };
+}
+
 const listExercises = async (req, res) => {
   try {
     const db = getDb();
@@ -21,7 +35,7 @@ const listExercises = async (req, res) => {
 const createExercise = async (req, res) => {
   try {
     const db = getDb();
-    const { name, category, muscleGroup, equipment, difficulty, imageUrl, instructions } = req.body;
+    const { name, category, muscleGroup, equipment, difficulty, imageUrl, instructions, translations } = req.body;
     const doc = {
       name: name.trim(),
       category: category.trim(),
@@ -30,6 +44,7 @@ const createExercise = async (req, res) => {
       difficulty: difficulty ? difficulty.trim() : 'Beginner',
       imageUrl: imageUrl ? imageUrl.trim() : '',
       instructions: Array.isArray(instructions) ? instructions : [],
+      translations: sanitizeExerciseTranslations(translations),
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -57,6 +72,9 @@ const updateExercise = async (req, res) => {
       if (req.body[key] !== undefined) {
         updates[key] = typeof req.body[key] === 'string' ? req.body[key].trim() : req.body[key];
       }
+    }
+    if (req.body.translations !== undefined) {
+      updates.translations = sanitizeExerciseTranslations(req.body.translations);
     }
 
     const result = await db.collection('exercises').findOneAndUpdate(

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "91c5094c-5aac-4ba2-aa4f-1a7c8ae95635",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/candidate.json",
+  "output": "/home/quang/VSCODE/FitTrack /fittrack/server/.archify/architecture-ai-coach-rag-20261115-234622/ai-coach-rag-architecture.html",
+  "specification": {
+    "sha256": "a1935ee9611b71acd34b913bf7a01a9ef6031f5c3f53c19cfdc3803bf617d31a",
+    "bytes": 8895
+  },
+  "artifact": {
+    "sha256": "60ab1f6c35c93e79f5a2f8e7fcae699eca256b63bbd59ec0256960f8e68284ac",
+    "bytes": 857688
+  }
+}

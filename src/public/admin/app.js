@@ -104,6 +104,15 @@ const populateGroupSelects = () => {
   }
 };
 
+const appendNameWithViBadge = (cell, name, hasVi) => {
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = name;
+  const badge = document.createElement('span');
+  badge.className = `badge-vi${hasVi ? ' is-translated' : ''}`;
+  badge.textContent = hasVi ? 'VI ✓' : 'VI —';
+  cell.append(nameSpan, badge);
+};
+
 const renderGroups = () => {
   const tbody = $('groups-tbody');
   tbody.innerHTML = '';
@@ -116,6 +125,7 @@ const renderGroups = () => {
   groupsCache.forEach((g) => {
     const tr = document.createElement('tr');
     const count = countsByCat[g.name] || 0;
+    const hasVi = Boolean(g.translations?.vi?.name?.trim());
     tr.innerHTML = `
       <td class="ex-name-cell"></td>
       <td><span class="mono-meta"></span></td>
@@ -126,12 +136,13 @@ const renderGroups = () => {
         <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
       </td>
     `;
-    tr.children[0].textContent = g.name;
+    appendNameWithViBadge(tr.children[0], g.name, hasVi);
     tr.children[1].firstChild.textContent = g.slug;
 
     tr.querySelector('.edit-grp').addEventListener('click', () => {
       $('grp-id').value = g.id;
       $('grp-name').value = g.name;
+      $('grp-name-vi').value = g.translations?.vi?.name || '';
       $('grp-icon').value = g.iconUrl || '';
       $('group-form-title').textContent = `Rename: ${g.name}`;
       $('grp-submit-btn').textContent = 'Update & Sync 5 Collections';
@@ -170,7 +181,8 @@ const renderExercises = () => {
     if (catFilter && ex.category !== catFilter) return false;
     if (statusFilter === 'active' && !active) return false;
     if (statusFilter === 'hidden' && active) return false;
-    if (q && !ex.name.toLowerCase().includes(q) && !ex.category.toLowerCase().includes(q)) return false;
+    const viName = ex.translations?.vi?.name?.toLowerCase() || '';
+    if (q && !ex.name.toLowerCase().includes(q) && !ex.category.toLowerCase().includes(q) && !viName.includes(q)) return false;
     return true;
   });
 
@@ -179,6 +191,7 @@ const renderExercises = () => {
   filtered.forEach((ex) => {
     const tr = document.createElement('tr');
     const active = ex.isActive !== false;
+    const hasVi = Boolean(ex.translations?.vi?.name?.trim());
     tr.innerHTML = `
       <td class="ex-name-cell"></td>
       <td><span class="badge-gray"></span></td>
@@ -189,7 +202,7 @@ const renderExercises = () => {
         <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
       </td>
     `;
-    tr.children[0].textContent = ex.name;
+    appendNameWithViBadge(tr.children[0], ex.name, hasVi);
     tr.children[1].firstChild.textContent = ex.category;
     tr.children[2].textContent = ex.equipment || 'STANDARD';
     tr.querySelector('.edit-btn').addEventListener('click', () => openEditForm(ex));
@@ -209,12 +222,16 @@ const openEditForm = (ex = null) => {
   $('exercise-form-title').textContent = ex ? `Edit: ${ex.name}` : 'New Exercise';
   $('ex-id').value = ex ? ex.id : '';
   $('ex-name').value = ex ? ex.name : '';
+  $('ex-name-vi').value = ex?.translations?.vi?.name || '';
   if (ex && ex.category) $('ex-category').value = ex.category;
   $('ex-muscle').value = ex ? (ex.muscleGroup || '') : '';
   $('ex-equipment').value = ex ? (ex.equipment || '') : '';
   $('ex-difficulty').value = ex ? (ex.difficulty || 'Beginner') : 'Beginner';
   $('ex-image').value = ex ? (ex.imageUrl || '') : '';
   $('ex-instructions').value = ex && Array.isArray(ex.instructions) ? ex.instructions.join('\n') : '';
+  $('ex-instructions-vi').value = Array.isArray(ex?.translations?.vi?.instructions)
+    ? ex.translations.vi.instructions.join('\n')
+    : '';
   $('ex-name').focus();
 };
 
@@ -306,6 +323,12 @@ $('exercise-form').addEventListener('submit', async (e) => {
     difficulty: $('ex-difficulty').value,
     imageUrl: $('ex-image').value,
     instructions: $('ex-instructions').value.split('\n').map((s) => s.trim()).filter(Boolean),
+    translations: {
+      vi: {
+        name: $('ex-name-vi').value.trim(),
+        instructions: $('ex-instructions-vi').value.split('\n').map((s) => s.trim()).filter(Boolean),
+      },
+    },
   };
 
   if (id) {
@@ -323,6 +346,7 @@ $('exercise-form').addEventListener('submit', async (e) => {
 const resetGroupForm = () => {
   $('grp-id').value = '';
   $('grp-name').value = '';
+  $('grp-name-vi').value = '';
   $('grp-icon').value = '';
   $('group-form-title').textContent = 'Add / Rename Muscle Group';
   $('grp-submit-btn').textContent = 'Save Muscle Group';
@@ -334,6 +358,11 @@ $('group-form').addEventListener('submit', async (e) => {
   const payload = {
     name: $('grp-name').value,
     iconUrl: $('grp-icon').value,
+    translations: {
+      vi: {
+        name: $('grp-name-vi').value.trim(),
+      },
+    },
   };
   if (id) {
     await apiFetch(`/api/admin/muscle-groups/${id}`, { method: 'PUT', body: JSON.stringify(payload) });

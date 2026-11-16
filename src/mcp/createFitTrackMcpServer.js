@@ -198,7 +198,8 @@ function createFitTrackMcpServer({ db, userId }) {
         filter.category = { $regex: `^${escapeRegex(category.trim())}$`, $options: 'i' };
       }
       if (query && query.trim()) {
-        filter.name = { $regex: escapeRegex(query.trim()), $options: 'i' };
+        const pattern = { $regex: escapeRegex(query.trim()), $options: 'i' };
+        filter.$or = [{ name: pattern }, { 'translations.vi.name': pattern }];
       }
 
       const exercises = await db

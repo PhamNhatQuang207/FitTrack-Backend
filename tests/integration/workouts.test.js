@@ -56,6 +56,7 @@ describe('POST /api/workouts', () => {
       .set(authHeader(token))
       .send({ exercises: [] });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   test('rejects an exercise missing required fields', async () => {
@@ -65,6 +66,7 @@ describe('POST /api/workouts', () => {
       .set(authHeader(token))
       .send({ exercises: [{ exerciseName: 'X' }] });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 
   test('rejects a set missing reps/weight', async () => {
@@ -78,6 +80,7 @@ describe('POST /api/workouts', () => {
         ],
       });
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 });
 

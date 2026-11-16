@@ -129,6 +129,25 @@ body.ft-page {
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
 }
+.badge-vi {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.45rem;
+  padding: 1px 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 999px;
+  vertical-align: middle;
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+.badge-vi.is-translated {
+  background: #ecfccb;
+  color: #3f6212;
+  border-color: #bef264;
+}
 
 /* Inputs */
 .ft-input {

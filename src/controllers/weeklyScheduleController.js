@@ -32,7 +32,7 @@ const startWeeklySchedule = async (req, res) => {
         });
 
         if (!plan) {
-            return res.status(404).json({ message: 'Weekly plan not found' });
+            return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan not found' });
         }
 
         // Determine week start (Monday)
@@ -52,7 +52,7 @@ const startWeeklySchedule = async (req, res) => {
         });
 
         if (existing) {
-            return res.status(400).json({ message: 'You already have an active schedule for this week' });
+            return res.status(400).json({ code: 'SCHEDULE_ACTIVE_EXISTS', message: 'You already have an active schedule for this week' });
         }
 
         // Create weekly schedule from plan
@@ -99,7 +99,7 @@ const startWeeklySchedule = async (req, res) => {
             scheduleId: result.insertedId
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -127,7 +127,7 @@ const getWeeklySchedules = async (req, res) => {
             userId: undefined
         })));
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -162,7 +162,7 @@ const getCurrentWeek = async (req, res) => {
             userId: undefined
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -179,7 +179,7 @@ const getWeeklyScheduleById = async (req, res) => {
         });
 
         if (!schedule) {
-            return res.status(404).json({ message: 'Weekly schedule not found' });
+            return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Weekly schedule not found' });
         }
 
         res.json({
@@ -189,7 +189,7 @@ const getWeeklyScheduleById = async (req, res) => {
             userId: undefined
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -208,7 +208,7 @@ const completeDayWorkout = async (req, res) => {
         });
 
         if (!schedule) {
-            return res.status(404).json({ message: 'Weekly schedule not found' });
+            return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Weekly schedule not found' });
         }
 
 
@@ -217,7 +217,7 @@ const completeDayWorkout = async (req, res) => {
         
         if (dayIndex === -1) {
 
-            return res.status(404).json({ message: 'Day not found' });
+            return res.status(404).json({ code: 'SCHEDULE_DAY_NOT_FOUND', message: 'Day not found' });
         }
 
         // Check if this day was already completed
@@ -247,7 +247,7 @@ const completeDayWorkout = async (req, res) => {
         res.json({ message: 'Day workout completed successfully', completedDays: newCompletedDays });
     } catch (error) {
         console.error("Error in completeDayWorkout:", error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -269,12 +269,12 @@ const completeWeek = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(404).json({ message: 'Weekly schedule not found' });
+            return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Weekly schedule not found' });
         }
 
         res.json({ message: 'Week completed successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -289,7 +289,7 @@ const updateScheduleDay = async (req, res) => {
         // Validate ObjectId format
         if (!ObjectId.isValid(id)) {
             console.error('Invalid schedule ID:', id);
-            return res.status(400).json({ message: 'Invalid schedule ID format' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid schedule ID format' });
         }
 
         const schedule = await db.collection('weekly-schedules').findOne({
@@ -298,25 +298,25 @@ const updateScheduleDay = async (req, res) => {
         });
 
         if (!schedule) {
-            return res.status(404).json({ message: 'Schedule not found' });
+            return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Schedule not found' });
         }
 
         if (schedule.status !== 'active') {
-            return res.status(400).json({ message: 'Can only edit active schedules' });
+            return res.status(400).json({ code: 'SCHEDULE_NOT_ACTIVE', message: 'Can only edit active schedules' });
         }
 
         const days = [...schedule.days];
         const dayIndex = days.findIndex(d => d.dayOfWeek === dayOfWeek);
         
         if (dayIndex === -1) {
-            return res.status(400).json({ message: 'Invalid day of week' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid day of week' });
         }
 
         if (action === 'swap') {
             const targetIndex = days.findIndex(d => d.dayOfWeek === targetDayOfWeek);
             
             if (targetIndex === -1) {
-                return res.status(400).json({ message: 'Invalid target day of week' });
+                return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid target day of week' });
             }
 
             const tempWorkout = days[dayIndex].workout;
@@ -343,7 +343,7 @@ const updateScheduleDay = async (req, res) => {
             }
         } else if (action === 'assignWorkout') {
             if (!workout) {
-                return res.status(400).json({ message: 'Workout data required for assignWorkout action' });
+                return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Workout data required for assignWorkout action' });
             }
             
             days[dayIndex].isRestDay = false;
@@ -360,14 +360,14 @@ const updateScheduleDay = async (req, res) => {
         } else if (action === 'updateWorkoutName') {
             const { workoutName } = req.body;
             if (!workoutName) {
-                return res.status(400).json({ message: 'Workout name is required' });
+                return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Workout name is required' });
             }
             if (days[dayIndex].isRestDay) {
-                return res.status(400).json({ message: 'Cannot update name for rest day' });
+                return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Cannot update name for rest day' });
             }
             days[dayIndex].workout.name = workoutName;
         } else {
-            return res.status(400).json({ message: 'Invalid action. Must be swap, toggleRest, assignWorkout, or updateWorkoutName' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid action. Must be swap, toggleRest, assignWorkout, or updateWorkoutName' });
         }
 
         const totalWorkoutDays = days.filter(d => !d.isRestDay).length;
@@ -390,7 +390,7 @@ const updateScheduleDay = async (req, res) => {
 
     } catch (error) {
         console.error('Error updating schedule day:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

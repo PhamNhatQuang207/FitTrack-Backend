@@ -1,6 +1,8 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
 
+const ALLOWED_LANGUAGES = ['en', 'vi'];
+
 const getProgress = async (req, res) => {
     try {
         const userId = req.userId;
@@ -32,4 +34,27 @@ const getProgress = async (req, res) => {
     }
 };
 
-module.exports = { getProgress };
+const updateLanguage = async (req, res) => {
+    try {
+        const { preferredLanguage } = req.body || {};
+        if (!ALLOWED_LANGUAGES.includes(preferredLanguage)) {
+            return res.status(400).json({
+                code: 'USER_INVALID_LANGUAGE',
+                message: 'preferredLanguage must be "en" or "vi"',
+            });
+        }
+        const db = getDb();
+        const result = await db.collection('users').updateOne(
+            { _id: new ObjectId(req.userId) },
+            { $set: { preferredLanguage, updatedAt: new Date() } }
+        );
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ code: 'USER_NOT_FOUND', message: 'User not found' });
+        }
+        res.json({ preferredLanguage });
+    } catch (error) {
+        res.status(500).json({ code: 'INTERNAL_ERROR', message: error.message });
+    }
+};
+
+module.exports = { getProgress, updateLanguage };

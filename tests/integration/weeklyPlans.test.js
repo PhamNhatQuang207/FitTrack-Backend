@@ -66,6 +66,7 @@ describe('POST /api/weekly-plans', () => {
       .set(authHeader(token))
       .send(planPayload({ days: sevenDays().slice(0, 5) }));
     expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
   });
 });
 
@@ -96,6 +97,7 @@ describe('GET/PUT/DELETE /api/weekly-plans/:id', () => {
     const id = await createPlan(owner.token);
     const res = await request(app).get(`/api/weekly-plans/${id}`).set(authHeader(attacker.token));
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('PLAN_NOT_FOUND');
   });
 
   test('updates a plan', async () => {

@@ -6,21 +6,27 @@ const PUBLIC_CACHE_KEY = 'muscle-groups:public';
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 
 const DEFAULT_MUSCLE_GROUPS = [
-  { name: 'Chest', order: 1 },
-  { name: 'Shoulders', order: 2 },
-  { name: 'Biceps', order: 3 },
-  { name: 'Triceps', order: 4 },
-  { name: 'Lats', order: 5 },
-  { name: 'Lower Back', order: 6 },
-  { name: 'Traps', order: 7 },
-  { name: 'Abdominals', order: 8 },
-  { name: 'Quadriceps', order: 9 },
-  { name: 'Hamstrings', order: 10 },
-  { name: 'Glutes', order: 11 },
-  { name: 'Adductor', order: 12 },
-  { name: 'Calves', order: 13 },
-  { name: 'Forearms', order: 14 },
+  { name: 'Chest', order: 1, translations: { vi: { name: 'Ngực' } } },
+  { name: 'Shoulders', order: 2, translations: { vi: { name: 'Vai' } } },
+  { name: 'Biceps', order: 3, translations: { vi: { name: 'Tay trước' } } },
+  { name: 'Triceps', order: 4, translations: { vi: { name: 'Tay sau' } } },
+  { name: 'Lats', order: 5, translations: { vi: { name: 'Xô' } } },
+  { name: 'Lower Back', order: 6, translations: { vi: { name: 'Lưng dưới' } } },
+  { name: 'Traps', order: 7, translations: { vi: { name: 'Cầu vai' } } },
+  { name: 'Abdominals', order: 8, translations: { vi: { name: 'Bụng' } } },
+  { name: 'Quadriceps', order: 9, translations: { vi: { name: 'Đùi trước' } } },
+  { name: 'Hamstrings', order: 10, translations: { vi: { name: 'Đùi sau' } } },
+  { name: 'Glutes', order: 11, translations: { vi: { name: 'Mông' } } },
+  { name: 'Adductor', order: 12, translations: { vi: { name: 'Cơ khép' } } },
+  { name: 'Calves', order: 13, translations: { vi: { name: 'Bắp chân' } } },
+  { name: 'Forearms', order: 14, translations: { vi: { name: 'Cẳng tay' } } },
 ];
+
+function sanitizeGroupTranslations(raw) {
+  const viName = typeof raw?.vi?.name === 'string' ? raw.vi.name.trim() : '';
+  if (!viName) return {};
+  return { vi: { name: viName } };
+}
 
 const toSlug = (name) =>
   name
@@ -35,6 +41,7 @@ const mapGroup = (g) => ({
   iconUrl: g.iconUrl || '',
   order: g.order || 0,
   isActive: g.isActive !== false,
+  translations: g.translations || {},
 });
 
 const ensureSeeded = async (db) => {
@@ -46,9 +53,24 @@ const ensureSeeded = async (db) => {
       iconUrl: '',
       order: g.order,
       isActive: true,
+      translations: g.translations,
       createdAt: new Date(),
     }));
     await db.collection('muscle_groups').insertMany(docs);
+    return;
+  }
+
+  for (const g of DEFAULT_MUSCLE_GROUPS) {
+    await db.collection('muscle_groups').updateOne(
+      {
+        slug: toSlug(g.name),
+        $or: [
+          { 'translations.vi.name': { $exists: false } },
+          { 'translations.vi.name': '' },
+        ],
+      },
+      { $set: { 'translations.vi.name': g.translations.vi.name } }
+    );
   }
 };
 
@@ -134,6 +156,7 @@ const createMuscleGroup = async (req, res) => {
       iconUrl: req.body.iconUrl ? String(req.body.iconUrl).trim() : '',
       order: typeof req.body.order === 'number' ? req.body.order : 99,
       isActive: true,
+      translations: sanitizeGroupTranslations(req.body.translations),
       createdAt: new Date(),
     };
     const { insertedId } = await db.collection('muscle_groups').insertOne(doc);
@@ -165,6 +188,9 @@ const updateMuscleGroup = async (req, res) => {
     if (req.body.iconUrl !== undefined) updates.iconUrl = String(req.body.iconUrl).trim();
     if (req.body.order !== undefined) updates.order = Number(req.body.order);
     if (req.body.isActive !== undefined) updates.isActive = Boolean(req.body.isActive);
+    if (req.body.translations !== undefined) {
+      updates.translations = sanitizeGroupTranslations(req.body.translations);
+    }
 
     const updated = await db.collection('muscle_groups').findOneAndUpdate(
       { _id: new ObjectId(id) },
@@ -221,4 +247,5 @@ module.exports = {
   updateMuscleGroup,
   mergeMuscleGroup,
   ensureSeeded,
+  DEFAULT_MUSCLE_GROUPS,
 };

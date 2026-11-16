@@ -10,7 +10,7 @@ const createWeeklyPlan = async (req, res) => {
 
         // Validation
         if (!name || !days || days.length !== 7) {
-            return res.status(400).json({ message: 'Plan name and 7 days are required' });
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Plan name and 7 days are required' });
         }
 
         const weeklyPlan = {
@@ -37,7 +37,7 @@ const createWeeklyPlan = async (req, res) => {
             planId: result.insertedId
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -59,7 +59,7 @@ const getWeeklyPlans = async (req, res) => {
             userId: undefined
         })));
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -76,7 +76,7 @@ const getWeeklyPlanById = async (req, res) => {
         });
 
         if (!plan) {
-            return res.status(404).json({ message: 'Weekly plan not found' });
+            return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan not found' });
         }
 
         res.json({
@@ -86,7 +86,7 @@ const getWeeklyPlanById = async (req, res) => {
             userId: undefined
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -109,12 +109,12 @@ const updateWeeklyPlan = async (req, res) => {
         );
 
         if (result.matchedCount === 0) {
-            return res.status(404).json({ message: 'Weekly plan not found' });
+            return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan not found' });
         }
 
         res.json({ message: 'Weekly plan updated successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -131,12 +131,12 @@ const deleteWeeklyPlan = async (req, res) => {
         });
 
         if (result.deletedCount === 0) {
-            return res.status(404).json({ message: 'Weekly plan not found' });
+            return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan not found' });
         }
 
         res.json({ message: 'Weekly plan deleted successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

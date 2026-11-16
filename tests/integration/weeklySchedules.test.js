@@ -66,6 +66,7 @@ describe('POST /api/weekly-schedules/start', () => {
     const { token } = await createUserAndToken(db);
     const res = await startSchedule(token, new ObjectId());
     expect(res.status).toBe(404);
+    expect(res.body.code).toBe('PLAN_NOT_FOUND');
   });
 
   test('rejects a second active schedule for the same week', async () => {
@@ -77,6 +78,7 @@ describe('POST /api/weekly-schedules/start', () => {
 
     const second = await startSchedule(token, planId);
     expect(second.status).toBe(400);
+    expect(second.body.code).toBe('SCHEDULE_ACTIVE_EXISTS');
     expect(second.body.message).toMatch(/already have an active schedule/i);
   });
 });

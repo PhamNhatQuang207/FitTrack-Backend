@@ -3,6 +3,7 @@ require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmailSmart');
+const { buildVerificationEmail, buildResetPasswordEmail } = require('../utils/emailTemplates');
 const verifyGoogleToken = require('../utils/verifyGoogleToken');
 const {
     REFRESH_COOKIE_NAME,
@@ -46,19 +47,22 @@ const register = async (req, res) => {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
 
+        const preferredLanguage = req.lang || existingUser?.preferredLanguage || 'en';
+
         if (existingUser) {
             // Registered but never verified, so nobody has proven they own this
             // address. Let the latest attempt claim it with a fresh token — this
             // is also how a user whose link expired gets a new one.
             await db.collection('users').updateOne(
                 { _id: existingUser._id },
-                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry } }
+                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry, preferredLanguage } }
             );
         } else {
             await db.collection('users').insertOne({
                 email,
                 password: hashedPassword,
                 name,
+                preferredLanguage,
                 isVerified: false,
                 verificationToken,
                 verificationTokenExpiry,
@@ -70,80 +74,10 @@ const register = async (req, res) => {
         const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
         
         try {
+            const emailContent = buildVerificationEmail({ name, verifyUrl: verificationUrl, lang: preferredLanguage });
             await sendEmail({
                 to: email,
-                subject: '🎯 Welcome to FitTrack - Verify Your Email',
-                html: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    </head>
-                    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
-                        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-                            <!-- Header with gradient -->
-                            <div style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); padding: 40px 20px; text-align: center;">
-                                <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: bold;">🏋️ FitTrack</h1>
-                                <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 16px;">Your Fitness Journey Starts Here</p>
-                            </div>
-                            
-                            <!-- Content -->
-                            <div style="padding: 40px 30px;">
-                                <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px;">Welcome, ${name}! 👋</h2>
-                                
-                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                    Thank you for joining FitTrack! We're excited to help you achieve your fitness goals.
-                                </p>
-                                
-                                <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                    To get started, please verify your email address by clicking the button below:
-                                </p>
-                                
-                                <!-- CTA Button -->
-                                <div style="text-align: center; margin: 40px 0;">
-                                    <a href="${verificationUrl}" 
-                                       style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);">
-                                        Verify Email Address
-                                    </a>
-                                </div>
-                                
-                                <!-- Alternative Link -->
-                                <div style="margin: 30px 0; padding: 20px; background-color: #f9fafb; border-radius: 8px; border-left: 4px solid #3b82f6;">
-                                    <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">
-                                        <strong>Or copy and paste this link:</strong>
-                                    </p>
-                                    <p style="margin: 0; color: #3b82f6; font-size: 14px; word-break: break-all;">
-                                        ${verificationUrl}
-                                    </p>
-                                </div>
-                                
-                                <!-- Info Box -->
-                                <div style="margin: 30px 0; padding: 15px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
-                                    <p style="margin: 0; color: #92400e; font-size: 14px;">
-                                        ⏱️ <strong>Important:</strong> This verification link will expire in 24 hours.
-                                    </p>
-                                </div>
-                                
-                                <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                                    If you didn't create a FitTrack account, you can safely ignore this email.
-                                </p>
-                            </div>
-                            
-                            <!-- Footer -->
-                            <div style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                                <p style="margin: 0 0 10px 0; color: #9ca3af; font-size: 14px;">
-                                    FitTrack - Track Your Progress, Achieve Your Goals
-                                </p>
-                                <p style="margin: 0; color: #d1d5db; font-size: 12px;">
-                                    © 2026 FitTrack. All rights reserved.
-                                </p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                `,
-                text: `Welcome to FitTrack, ${name}! Please verify your email by visiting: ${verificationUrl}\n\nThis link will expire in 24 hours.\n\nIf you didn't create an account, you can ignore this email.`
+                ...emailContent
             });
         } catch (emailError) {
             console.error('Failed to send verification email:', emailError);
@@ -154,7 +88,7 @@ const register = async (req, res) => {
         // which branch ran, and hand out a real user id besides.
         res.status(201).json(genericResponse);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -166,21 +100,21 @@ const login = async (req, res) => {
         // Find user by email
         const user = await db.collection('users').findOne({ email });
         if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Check if email is verified
         if (user.isVerified === false) {
-            return res.status(401).json({ message: 'Please verify your email before logging in' });
+            return res.status(401).json({ code: 'AUTH_EMAIL_NOT_VERIFIED', message: 'Please verify your email before logging in' });
         }
 
         // Check password
         if (!user.password) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie)
@@ -191,10 +125,11 @@ const login = async (req, res) => {
             token,
             userId: user._id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -207,7 +142,7 @@ const verifyEmail = async (req, res) => {
         const user = await db.collection('users').findOne({ verificationToken: token });
         
         if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired verification token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired verification token' });
         }
 
         // Check if already verified
@@ -219,7 +154,7 @@ const verifyEmail = async (req, res) => {
         // expiry was tracked has no expiry field, and counts as expired; signing
         // up again re-sends a fresh link.
         if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
-            return res.status(400).json({ message: 'Invalid or expired verification token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired verification token' });
         }
 
         // Update user: set verified and remove token
@@ -234,7 +169,7 @@ const verifyEmail = async (req, res) => {
         res.status(200).json({ message: 'Email verified successfully! You can now log in.' });
     } catch (error) {
         console.error('Verification error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -273,80 +208,14 @@ const requestPasswordReset = async (req, res) => {
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
         try {
+            const emailContent = buildResetPasswordEmail({
+                name: user.name,
+                resetUrl,
+                lang: user.preferredLanguage || req.lang || 'en'
+            });
             await sendEmail({
                 to: email,
-                subject: '🔒 FitTrack - Password Reset Request',
-                html: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    </head>
-                    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
-                        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-                            <!-- Header -->
-                            <div style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); padding: 40px 20px; text-align: center;">
-                                <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: bold;">🏋️ FitTrack</h1>
-                                <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 16px;">Password Reset Request</p>
-                            </div>
-                            
-                            <!-- Content -->
-                            <div style="padding: 40px 30px;">
-                                <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px;">Hi, ${user.name}!</h2>
-                                
-                                <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                    You requested to reset your password for your FitTrack account.
-                                </p>
-                                
-                                <p style="margin: 0 0 30px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                                    Click the button below to create a new password:
-                                </p>
-                                
-                                <!-- CTA Button -->
-                                <div style="text-align: center; margin: 40px 0;">
-                                    <a href="${resetUrl}" 
-                                       style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);">
-                                        Reset Password
-                                    </a>
-                                </div>
-                                
-                                <!-- Alternative Link -->
-                                <div style="margin: 30px 0; padding: 20px; background-color: #f9fafb; border-radius: 8px; border-left: 4px solid #3b82f6;">
-                                    <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">
-                                        <strong>Or copy and paste this link:</strong>
-                                    </p>
-                                    <p style="margin: 0; color: #3b82f6; font-size: 14px; word-break: break-all;">
-                                        ${resetUrl}
-                                    </p>
-                                </div>
-                                
-                                <!-- Warning Box -->
-                                <div style="margin: 30px 0; padding: 15px; background-color: #fee2e2; border-radius: 8px; border-left: 4px solid #dc2626;">
-                                    <p style="margin: 0; color: #7f1d1d; font-size: 14px;">
-                                        ⏱️ <strong>Important:</strong> This password reset link will expire in 1 hour.
-                                    </p>
-                                </div>
-                                
-                                <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                                    If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
-                                </p>
-                            </div>
-                            
-                            <!-- Footer -->
-                            <div style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-                                <p style="margin: 0 0 10px 0; color: #9ca3af; font-size: 14px;">
-                                    FitTrack - Track Your Progress, Achieve Your Goals
-                                </p>
-                                <p style="margin: 0; color: #d1d5db; font-size: 12px;">
-                                    © 2026 FitTrack. All rights reserved.
-                                </p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                `,
-                text: `Password Reset Request\n\nHi ${user.name},\n\nYou requested to reset your password for your FitTrack account. Please visit the following link to create a new password:\n\n${resetUrl}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this, you can ignore this email.`
+                ...emailContent
             });
         } catch (emailError) {
             console.error('Failed to send password reset email:', emailError);
@@ -355,7 +224,7 @@ const requestPasswordReset = async (req, res) => {
         res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
     } catch (error) {
         console.error('Password reset request error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -372,7 +241,7 @@ const resetPassword = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).json({ message: 'Invalid or expired reset token' });
+            return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired reset token' });
         }
 
         // Hash new password
@@ -393,7 +262,7 @@ const resetPassword = async (req, res) => {
         res.status(200).json({ message: 'Password reset successful! You can now log in with your new password.' });
     } catch (error) {
         console.error('Password reset error:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -404,11 +273,11 @@ const googleLogin = async (req, res) => {
         try {
             payload = await verifyGoogleToken(idToken);
         } catch {
-            return res.status(401).json({ message: 'Invalid Google token' });
+            return res.status(401).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid Google token' });
         }
 
         if (!payload || !payload.email || !payload.email_verified) {
-            return res.status(401).json({ message: 'Google account email is not verified' });
+            return res.status(401).json({ code: 'AUTH_EMAIL_NOT_VERIFIED', message: 'Google account email is not verified' });
         }
 
         const email = payload.email.trim().toLowerCase();
@@ -426,6 +295,7 @@ const googleLogin = async (req, res) => {
                 name,
                 googleId,
                 authProvider: 'google',
+                preferredLanguage: req.lang || 'en',
                 isVerified: true,
                 createdAt: new Date()
             };
@@ -453,10 +323,11 @@ const googleLogin = async (req, res) => {
             token,
             userId: user._id,
             name: user.name || name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -466,33 +337,34 @@ const refresh = async (req, res) => {
         const rawToken = cookies[REFRESH_COOKIE_NAME];
         if (!rawToken) {
             clearRefreshCookie(res);
-            return res.status(401).json({ message: 'Refresh token missing' });
+            return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'Refresh token missing' });
         }
 
         const db = getDb();
         const rotated = await rotateRefreshToken({ db, rawToken, res });
         if (!rotated) {
-            return res.status(401).json({ message: 'Invalid or expired refresh token' });
+            return res.status(401).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired refresh token' });
         }
 
         const user = await db.collection('users').findOne(
             { _id: rotated.userId },
-            { projection: { name: 1, email: 1 } }
+            { projection: { name: 1, email: 1, preferredLanguage: 1 } }
         );
         if (!user) {
             await revokeAllUserRefreshTokens({ db, userId: rotated.userId });
             clearRefreshCookie(res);
-            return res.status(401).json({ message: 'User not found' });
+            return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'User not found' });
         }
 
         return res.json({
             token: rotated.accessToken,
             userId: user._id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        return res.status(500).json({ message: error.message });
+        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 
@@ -508,7 +380,7 @@ const logout = async (req, res) => {
         return res.status(200).json({ message: 'Logged out successfully' });
     } catch (error) {
         clearRefreshCookie(res);
-        return res.status(500).json({ message: error.message });
+        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };
 

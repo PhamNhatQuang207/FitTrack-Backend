@@ -46,19 +46,22 @@ const register = async (req, res) => {
         const verificationToken = crypto.randomBytes(32).toString('hex');
         const verificationTokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
 
+        const preferredLanguage = req.lang || existingUser?.preferredLanguage || 'en';
+
         if (existingUser) {
             // Registered but never verified, so nobody has proven they own this
             // address. Let the latest attempt claim it with a fresh token — this
             // is also how a user whose link expired gets a new one.
             await db.collection('users').updateOne(
                 { _id: existingUser._id },
-                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry } }
+                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry, preferredLanguage } }
             );
         } else {
             await db.collection('users').insertOne({
                 email,
                 password: hashedPassword,
                 name,
+                preferredLanguage,
                 isVerified: false,
                 verificationToken,
                 verificationTokenExpiry,
@@ -191,7 +194,8 @@ const login = async (req, res) => {
             token,
             userId: user._id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -426,6 +430,7 @@ const googleLogin = async (req, res) => {
                 name,
                 googleId,
                 authProvider: 'google',
+                preferredLanguage: req.lang || 'en',
                 isVerified: true,
                 createdAt: new Date()
             };
@@ -453,7 +458,8 @@ const googleLogin = async (req, res) => {
             token,
             userId: user._id,
             name: user.name || name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -477,7 +483,7 @@ const refresh = async (req, res) => {
 
         const user = await db.collection('users').findOne(
             { _id: rotated.userId },
-            { projection: { name: 1, email: 1 } }
+            { projection: { name: 1, email: 1, preferredLanguage: 1 } }
         );
         if (!user) {
             await revokeAllUserRefreshTokens({ db, userId: rotated.userId });
@@ -489,7 +495,8 @@ const refresh = async (req, res) => {
             token: rotated.accessToken,
             userId: user._id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
         return res.status(500).json({ message: error.message });

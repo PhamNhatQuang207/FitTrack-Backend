@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { updateProgress } = require('../controllers/progressController');
-const { getProgress } = require('../controllers/userController');
+const { getProgress, updateLanguage } = require('../controllers/userController');
 const protect = require('../middleware/authMiddleware');
 
 /**
@@ -163,5 +163,7 @@ router.get('/progress', protect, getProgress);
  *                   example: Not authorized, token failed
  */
 router.post('/progress', protect, updateProgress);
+
+router.patch('/language', protect, updateLanguage);
 
 module.exports = router;

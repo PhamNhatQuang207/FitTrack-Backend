@@ -4,7 +4,7 @@ const { connectDB, closeDB } = require('../config/db');
 const { loadAndChunkKnowledgeDir } = require('../services/rag/chunker');
 const { embedDocuments } = require('../services/rag/embeddingClient');
 const { toFloat32Binary } = require('../services/rag/vectorMath');
-const { KNOWLEDGE_COLLECTION } = require('../services/rag/knowledgeSearchService');
+const { KNOWLEDGE_COLLECTION, clearKnowledgeCache } = require('../services/rag/knowledgeSearchService');
 
 dotenv.config();
 
@@ -54,12 +54,17 @@ async function ingestKnowledgeDirectory({
 
   const validIds = chunks.map((c) => c.chunkId);
   const pruneRes = await collection.deleteMany({ chunkId: { $nin: validIds } });
+  const deletedCount = pruneRes.deletedCount || 0;
+
+  if (embeddedCount > 0 || deletedCount > 0) {
+    clearKnowledgeCache();
+  }
 
   return {
     totalChunks: chunks.length,
     embeddedCount,
     skippedCount,
-    deletedCount: pruneRes.deletedCount || 0
+    deletedCount
   };
 }
 

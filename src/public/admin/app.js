@@ -102,6 +102,7 @@ const populateGroupSelects = () => {
   if (groupsCache.length > 1) {
     tgtSelect.selectedIndex = 1;
   }
+  syncAllCustomSelects();
 };
 
 const appendNameWithViBadge = (cell, name, hasVi) => {
@@ -232,6 +233,7 @@ const openEditForm = (ex = null) => {
   $('ex-instructions-vi').value = Array.isArray(ex?.translations?.vi?.instructions)
     ? ex.translations.vi.instructions.join('\n')
     : '';
+  syncAllCustomSelects();
   $('ex-name').focus();
 };
 
@@ -430,6 +432,87 @@ const switchTab = (activeTabId, activePanelId) => {
 $('tab-exercises').addEventListener('click', () => switchTab('tab-exercises', 'panel-exercises'));
 $('tab-groups').addEventListener('click', () => switchTab('tab-groups', 'panel-groups'));
 $('tab-config').addEventListener('click', () => switchTab('tab-config', 'panel-config'));
+
+const customSelectSyncers = [];
+
+const syncAllCustomSelects = () => {
+  customSelectSyncers.forEach((fn) => fn());
+};
+
+const closeAllSelectMenus = (exceptMenu = null) => {
+  document.querySelectorAll('.ft-select-menu').forEach((menu) => {
+    if (menu !== exceptMenu) menu.classList.add('hidden');
+  });
+};
+
+const enhanceSelect = (selectEl) => {
+  if (!selectEl || selectEl.dataset.enhanced === '1') return;
+  selectEl.dataset.enhanced = '1';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ft-select-wrap';
+  selectEl.parentNode.insertBefore(wrap, selectEl);
+  wrap.appendChild(selectEl);
+  selectEl.classList.add('ft-native-select');
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'ft-input ft-select-trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+
+  const labelSpan = document.createElement('span');
+  const chevron = document.createElement('span');
+  chevron.className = 'ft-select-chevron';
+  chevron.textContent = '▾';
+  trigger.appendChild(labelSpan);
+  trigger.appendChild(chevron);
+
+  const menu = document.createElement('div');
+  menu.className = 'ft-select-menu hidden';
+  menu.setAttribute('role', 'listbox');
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+
+  const sync = () => {
+    const selectedOpt = selectEl.options[selectEl.selectedIndex];
+    labelSpan.textContent = selectedOpt ? selectedOpt.textContent : '';
+    menu.innerHTML = '';
+    Array.from(selectEl.options).forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ft-select-option' + (opt.value === selectEl.value ? ' is-selected' : '');
+      btn.textContent = opt.textContent;
+      btn.addEventListener('click', () => {
+        selectEl.value = opt.value;
+        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        sync();
+        menu.classList.add('hidden');
+      });
+      menu.appendChild(btn);
+    });
+  };
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = menu.classList.contains('hidden');
+    closeAllSelectMenus(menu);
+    if (isHidden) {
+      sync();
+      menu.classList.remove('hidden');
+    } else {
+      menu.classList.add('hidden');
+    }
+  });
+
+  selectEl.addEventListener('change', sync);
+  customSelectSyncers.push(sync);
+  sync();
+};
+
+document.addEventListener('click', () => closeAllSelectMenus());
+['ex-category', 'ex-difficulty', 'exercise-category-filter', 'exercise-status-filter', 'merge-source', 'merge-target']
+  .forEach((id) => enhanceSelect($(id)));
 
 if (sessionStorage.getItem(TOKEN_KEY)) {
   showDashboard().catch(showLogin);

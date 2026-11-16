@@ -9,6 +9,7 @@ const authRoutes = require('./routes/authRoutes');
 const helmet = require('helmet');
 const { limiter, mcpLimiter } = require('./middleware/rateLimiter');
 const authMiddleware = require('./middleware/authMiddleware');
+const localeMiddleware = require('./middleware/localeMiddleware');
 const mcpAuthMiddleware = require('./middleware/mcpAuthMiddleware');
 const { mcpHttpHandler } = require('./mcp/mcpHttpHandler');
 const userRoutes = require('./routes/userRoutes');
@@ -38,7 +39,7 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'X-Mcp-Api-Key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'Accept-Language', 'X-Mcp-Api-Key']
 }));
 
 // Security Middleware
@@ -56,6 +57,7 @@ app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.use('/api', limiter); // Apply global rate limit to API routes
 
 app.use(express.json());
+app.use(localeMiddleware);
 
 // MCP HTTP transport (Streamable HTTP)
 app.all('/mcp', mcpAuthMiddleware, mcpLimiter, mcpHttpHandler);

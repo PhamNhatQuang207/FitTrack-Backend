@@ -74,19 +74,32 @@ const createRefreshTokenRecord = async ({ db, userId }) => {
 };
 
 /**
- * Issues a short-lived access JWT and sets a new HttpOnly refresh cookie.
+ * Issues a short-lived access JWT + refresh token pair and optionally sets the HttpOnly refresh cookie.
  */
-const issueSessionTokens = async ({ db, userId, res }) => {
+const issueSessionTokenPair = async ({ db, userId, res, setCookie = true }) => {
     const rawRefreshToken = await createRefreshTokenRecord({ db, userId });
-    setRefreshCookie(res, rawRefreshToken);
-    return signAccessToken(userId);
+    if (setCookie) {
+        setRefreshCookie(res, rawRefreshToken);
+    }
+    return {
+        accessToken: signAccessToken(userId),
+        refreshToken: rawRefreshToken,
+    };
+};
+
+/**
+ * Issues a short-lived access JWT and optionally sets a new HttpOnly refresh cookie.
+ */
+const issueSessionTokens = async ({ db, userId, res, setCookie = true }) => {
+    const { accessToken } = await issueSessionTokenPair({ db, userId, res, setCookie });
+    return accessToken;
 };
 
 /**
  * Atomically consumes a single-use refresh token, validates expiry, rotates
- * a new refresh cookie + token record, and returns { accessToken, userId } or null.
+ * a new refresh cookie (unless disabled) + token record, and returns { accessToken, refreshToken, userId } or null.
  */
-const rotateRefreshToken = async ({ db, rawToken, res }) => {
+const rotateRefreshToken = async ({ db, rawToken, res, setCookie = true }) => {
     if (!rawToken) return null;
 
     const existing = await db.collection(REFRESH_COLLECTION).findOneAndDelete({
@@ -94,17 +107,20 @@ const rotateRefreshToken = async ({ db, rawToken, res }) => {
     });
 
     if (!existing || !existing.expiresAt || existing.expiresAt <= new Date()) {
-        clearRefreshCookie(res);
+        if (setCookie) {
+            clearRefreshCookie(res);
+        }
         return null;
     }
 
-    const accessToken = await issueSessionTokens({
+    const { accessToken, refreshToken } = await issueSessionTokenPair({
         db,
         userId: existing.userId,
         res,
+        setCookie,
     });
 
-    return { accessToken, userId: existing.userId };
+    return { accessToken, refreshToken, userId: existing.userId };
 };
 
 const revokeRefreshToken = async ({ db, rawToken }) => {
@@ -131,6 +147,7 @@ module.exports = {
     setRefreshCookie,
     clearRefreshCookie,
     signAccessToken,
+    issueSessionTokenPair,
     issueSessionTokens,
     rotateRefreshToken,
     revokeRefreshToken,

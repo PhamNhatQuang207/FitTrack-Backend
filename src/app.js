@@ -33,13 +33,14 @@ app.set('trust proxy', 1);
 app.use(cors({
   origin: [
     'http://localhost:3000',  // Local development (Create React App)
+    'http://localhost:8081',  // Local development (Expo Web)
     'https://gym-tracking-123.vercel.app',  // Old Vercel domain — drop once the cutover is verified
     'https://fittrack.io.vn',  // Production frontend (apex)
     'https://www.fittrack.io.vn'  // Production frontend (www redirects to apex)
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'Accept-Language', 'X-Mcp-Api-Key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'Accept-Language', 'X-Mcp-Api-Key', 'X-Client-Type']
 }));
 
 // Security Middleware

@@ -495,3 +495,110 @@ describe('Refresh token cookie flow (POST /api/auth/refresh & /logout)', () => {
     }
   });
 });
+
+describe('Mobile refresh token body flow (X-Client-Type: mobile)', () => {
+  test('login without X-Client-Type: mobile omits refreshToken from JSON body', async () => {
+    await seedUser({ email: 'webonly@test.com' });
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'webonly@test.com', password: 'password123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.refreshToken).toBeUndefined();
+  });
+
+  test('login, refresh rotation, and logout work with body refreshToken without Set-Cookie when X-Client-Type: mobile', async () => {
+    await seedUser({ email: 'mobile@test.com', name: 'Mobile User' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .set('X-Client-Type', 'mobile')
+      .send({ email: 'mobile@test.com', password: 'password123' });
+
+    expect(loginRes.status).toBe(200);
+    expect(typeof loginRes.body.refreshToken).toBe('string');
+    expect(loginRes.headers['set-cookie']).toBeUndefined();
+    const firstRefresh = loginRes.body.refreshToken;
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('X-Client-Type', 'mobile')
+      .send({ refreshToken: firstRefresh });
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.token).toBeTruthy();
+    expect(typeof refreshRes.body.refreshToken).toBe('string');
+    expect(refreshRes.body.refreshToken).not.toBe(firstRefresh);
+    expect(refreshRes.headers['set-cookie']).toBeUndefined();
+
+    // Replaying old mobile refresh token fails
+    await request(app)
+      .post('/api/auth/refresh')
+      .set('X-Client-Type', 'mobile')
+      .send({ refreshToken: firstRefresh })
+      .expect(401);
+
+    // Logout revokes the active mobile refresh token without setting/clearing cookies
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('X-Client-Type', 'mobile')
+      .send({ refreshToken: refreshRes.body.refreshToken })
+      .expect(200);
+    expect(logoutRes.headers['set-cookie']).toBeUndefined();
+
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments()).toBe(0);
+
+    await request(app)
+      .post('/api/auth/refresh')
+      .set('X-Client-Type', 'mobile')
+      .send({ refreshToken: refreshRes.body.refreshToken })
+      .expect(401);
+  });
+
+  test('mobile client does not fall back to Cookie header when body refreshToken is missing', async () => {
+    await seedUser({ email: 'mobilecookie@test.com' });
+
+    const webLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'mobilecookie@test.com', password: 'password123' });
+
+    const cookiePair = (webLoginRes.headers['set-cookie'] || [])
+      .find((c) => c.startsWith(`${REFRESH_COOKIE_NAME}=`))
+      .split(';')[0];
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('X-Client-Type', 'mobile')
+      .set('Cookie', [cookiePair])
+      .send({});
+
+    expect(refreshRes.status).toBe(401);
+    expect(refreshRes.headers['set-cookie']).toBeUndefined();
+
+    // Logout from mobile without body refreshToken must not revoke the web cookie token
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('X-Client-Type', 'mobile')
+      .set('Cookie', [cookiePair])
+      .send({});
+
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.headers['set-cookie']).toBeUndefined();
+    expect(await db.collection(REFRESH_COLLECTION).countDocuments()).toBe(1);
+  });
+
+  test('web client cannot refresh using body refreshToken without X-Client-Type: mobile', async () => {
+    await seedUser({ email: 'strictweb@test.com' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .set('X-Client-Type', 'mobile')
+      .send({ email: 'strictweb@test.com', password: 'password123' });
+
+    await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: loginRes.body.refreshToken })
+      .expect(401);
+  });
+});

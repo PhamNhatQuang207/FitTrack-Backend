@@ -9,11 +9,24 @@ const {
     REFRESH_COOKIE_NAME,
     parseCookies,
     clearRefreshCookie,
-    issueSessionTokens,
+    issueSessionTokenPair,
     rotateRefreshToken,
     revokeRefreshToken,
     revokeAllUserRefreshTokens,
 } = require('../utils/refreshToken');
+
+const isMobileClient = (req) =>
+    String(req.headers['x-client-type'] || '').toLowerCase() === 'mobile';
+
+const extractRefreshToken = (req) => {
+    if (isMobileClient(req)) {
+        return typeof req.body?.refreshToken === 'string' && req.body.refreshToken.trim()
+            ? req.body.refreshToken.trim()
+            : null;
+    }
+    const cookies = parseCookies(req.headers.cookie);
+    return cookies[REFRESH_COOKIE_NAME] || null;
+};
 
 const escapeEmailRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -117,12 +130,19 @@ const login = async (req, res) => {
             return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
-        // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie)
-        const token = await issueSessionTokens({ db, userId: user._id, res });
+        // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie for web, body for mobile)
+        const mobileClient = isMobileClient(req);
+        const { accessToken: token, refreshToken } = await issueSessionTokenPair({
+            db,
+            userId: user._id,
+            res,
+            setCookie: !mobileClient,
+        });
 
         res.json({
             message: 'Login successful',
             token,
+            ...(mobileClient ? { refreshToken } : {}),
             userId: user._id,
             name: user.name,
             email: user.email,
@@ -316,11 +336,18 @@ const googleLogin = async (req, res) => {
             );
         }
 
-        const token = await issueSessionTokens({ db, userId: user._id, res });
+        const mobileClient = isMobileClient(req);
+        const { accessToken: token, refreshToken } = await issueSessionTokenPair({
+            db,
+            userId: user._id,
+            res,
+            setCookie: !mobileClient,
+        });
 
         res.json({
             message: 'Login successful',
             token,
+            ...(mobileClient ? { refreshToken } : {}),
             userId: user._id,
             name: user.name || name,
             email: user.email,
@@ -333,15 +360,17 @@ const googleLogin = async (req, res) => {
 
 const refresh = async (req, res) => {
     try {
-        const cookies = parseCookies(req.headers.cookie);
-        const rawToken = cookies[REFRESH_COOKIE_NAME];
+        const mobileClient = isMobileClient(req);
+        const rawToken = extractRefreshToken(req);
         if (!rawToken) {
-            clearRefreshCookie(res);
+            if (!mobileClient) {
+                clearRefreshCookie(res);
+            }
             return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'Refresh token missing' });
         }
 
         const db = getDb();
-        const rotated = await rotateRefreshToken({ db, rawToken, res });
+        const rotated = await rotateRefreshToken({ db, rawToken, res, setCookie: !mobileClient });
         if (!rotated) {
             return res.status(401).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired refresh token' });
         }
@@ -352,12 +381,15 @@ const refresh = async (req, res) => {
         );
         if (!user) {
             await revokeAllUserRefreshTokens({ db, userId: rotated.userId });
-            clearRefreshCookie(res);
+            if (!mobileClient) {
+                clearRefreshCookie(res);
+            }
             return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'User not found' });
         }
 
         return res.json({
             token: rotated.accessToken,
+            ...(mobileClient ? { refreshToken: rotated.refreshToken } : {}),
             userId: user._id,
             name: user.name,
             email: user.email,
@@ -369,17 +401,21 @@ const refresh = async (req, res) => {
 };
 
 const logout = async (req, res) => {
+    const mobileClient = isMobileClient(req);
     try {
-        const cookies = parseCookies(req.headers.cookie);
-        const rawToken = cookies[REFRESH_COOKIE_NAME];
+        const rawToken = extractRefreshToken(req);
         if (rawToken) {
             const db = getDb();
             await revokeRefreshToken({ db, rawToken });
         }
-        clearRefreshCookie(res);
+        if (!mobileClient) {
+            clearRefreshCookie(res);
+        }
         return res.status(200).json({ message: 'Logged out successfully' });
     } catch (error) {
-        clearRefreshCookie(res);
+        if (!mobileClient) {
+            clearRefreshCookie(res);
+        }
         return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
     }
 };

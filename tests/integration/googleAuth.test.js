@@ -123,4 +123,23 @@ describe('POST /api/auth/google', () => {
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('Invalid credentials');
   });
+
+  test('returns refreshToken in body without Set-Cookie when X-Client-Type: mobile is set', async () => {
+    verifyGoogleToken.mockResolvedValue({
+      sub: 'google-mobile-1',
+      email: 'mobilegoogle@example.com',
+      name: 'Mobile Google',
+      email_verified: true,
+    });
+
+    const res = await request(app)
+      .post('/api/auth/google')
+      .set('X-Client-Type', 'mobile')
+      .send({ idToken: 'valid-token' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('token');
+    expect(typeof res.body.refreshToken).toBe('string');
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
 });

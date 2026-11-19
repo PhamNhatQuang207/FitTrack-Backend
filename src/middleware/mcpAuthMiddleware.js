@@ -36,7 +36,8 @@ const mcpAuthMiddleware = async (req, res, next) => {
 
     return authMiddleware(req, res, next);
   } catch (error) {
-    return res.status(500).json({ message: error.message || 'Internal server error' });
+    console.error('[mcpAuthMiddleware]', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 

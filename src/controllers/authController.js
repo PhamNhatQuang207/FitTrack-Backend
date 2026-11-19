@@ -7,6 +7,7 @@ const { buildVerificationEmail, buildResetPasswordEmail } = require('../utils/em
 const verifyGoogleToken = require('../utils/verifyGoogleToken');
 const {
     REFRESH_COOKIE_NAME,
+    hashToken,
     parseCookies,
     clearRefreshCookie,
     issueSessionTokenPair,
@@ -14,6 +15,7 @@ const {
     revokeRefreshToken,
     revokeAllUserRefreshTokens,
 } = require('../utils/refreshToken');
+const { safeServerError } = require('../utils/security');
 
 const isMobileClient = (req) =>
     String(req.headers['x-client-type'] || '').toLowerCase() === 'mobile';
@@ -30,12 +32,24 @@ const extractRefreshToken = (req) => {
 
 const escapeEmailRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const findUserByEmailInsensitive = (db, rawEmail) => {
+    const normalized = String(rawEmail || '').trim().toLowerCase();
+    return db.collection('users').findOne({
+        email: { $regex: `^${escapeEmailRegex(normalized)}$`, $options: 'i' }
+    });
+};
+
 // Must stay in step with the "expires in 24 hours" copy in the verification email.
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 const register = async (req, res) => {
     try {
-        const { email, password, name } = req.body;
+        const email = req.body.email.trim().toLowerCase();
+        const password = req.body.password;
+        const name = req.body.name.trim();
+        if (!name || name.length > 100) {
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Name must be 1 to 100 characters' });
+        }
         const db = getDb();
 
         // Every branch below answers with exactly this. Telling the caller that an
@@ -44,7 +58,7 @@ const register = async (req, res) => {
             message: 'Registration successful! Please check your email to verify your account.'
         };
 
-        const existingUser = await db.collection('users').findOne({ email });
+        const existingUser = await findUserByEmailInsensitive(db, email);
 
         // Already registered and verified: do nothing at all. The real owner is
         // untouched, and the caller can't tell this apart from a fresh signup.
@@ -56,8 +70,9 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Generate verification token
+        // Generate verification token (store SHA-256 hash in DB; send raw token in email)
         const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationTokenHash = hashToken(verificationToken);
         const verificationTokenExpiry = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
 
         const preferredLanguage = req.lang || existingUser?.preferredLanguage || 'en';
@@ -68,7 +83,7 @@ const register = async (req, res) => {
             // is also how a user whose link expired gets a new one.
             await db.collection('users').updateOne(
                 { _id: existingUser._id },
-                { $set: { name, password: hashedPassword, verificationToken, verificationTokenExpiry, preferredLanguage } }
+                { $set: { name, password: hashedPassword, verificationToken: verificationTokenHash, verificationTokenExpiry, preferredLanguage } }
             );
         } else {
             await db.collection('users').insertOne({
@@ -77,7 +92,7 @@ const register = async (req, res) => {
                 name,
                 preferredLanguage,
                 isVerified: false,
-                verificationToken,
+                verificationToken: verificationTokenHash,
                 verificationTokenExpiry,
                 createdAt: new Date()
             });
@@ -101,7 +116,7 @@ const register = async (req, res) => {
         // which branch ran, and hand out a real user id besides.
         res.status(201).json(genericResponse);
     } catch (error) {
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.register', error, { includeCode: true });
     }
 };
 
@@ -110,24 +125,21 @@ const login = async (req, res) => {
         const { email, password } = req.body;
         const db = getDb();
 
-        // Find user by email
-        const user = await db.collection('users').findOne({ email });
-        if (!user) {
+        // Find user by email (case-insensitive)
+        const user = await findUserByEmailInsensitive(db, email);
+        if (!user || !user.password) {
+            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
+        }
+
+        // Verify password BEFORE revealing email verification status to prevent enumeration
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
             return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Check if email is verified
         if (user.isVerified === false) {
             return res.status(401).json({ code: 'AUTH_EMAIL_NOT_VERIFIED', message: 'Please verify your email before logging in' });
-        }
-
-        // Check password
-        if (!user.password) {
-            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
-        }
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid credentials' });
         }
 
         // Issue short-lived access token (body) + long-lived refresh token (HttpOnly cookie for web, body for mobile)
@@ -149,7 +161,7 @@ const login = async (req, res) => {
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.login', error, { includeCode: true });
     }
 };
 
@@ -158,8 +170,10 @@ const verifyEmail = async (req, res) => {
         const { token } = req.params;
         const db = getDb();
 
-        // Find user by verification token
-        const user = await db.collection('users').findOne({ verificationToken: token });
+        // Find user by SHA-256 hash of verification token
+        const user = await db.collection('users').findOne({
+            verificationToken: hashToken(String(token || ''))
+        });
         
         if (!user) {
             return res.status(400).json({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid or expired verification token' });
@@ -188,8 +202,7 @@ const verifyEmail = async (req, res) => {
 
         res.status(200).json({ message: 'Email verified successfully! You can now log in.' });
     } catch (error) {
-        console.error('Verification error:', error);
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.verifyEmail', error, { includeCode: true });
     }
 };
 
@@ -198,8 +211,8 @@ const requestPasswordReset = async (req, res) => {
         const { email } = req.body;
         const db = getDb();
 
-        // Find user by email
-        const user = await db.collection('users').findOne({ email });
+        // Find user by email (case-insensitive)
+        const user = await findUserByEmailInsensitive(db, email);
         if (!user) {
             // Don't reveal if user exists or not for security
             return res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
@@ -209,16 +222,17 @@ const requestPasswordReset = async (req, res) => {
             return res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
         }
 
-        // Generate reset token
+        // Generate reset token (store SHA-256 hash in DB; send raw token in email)
         const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenHash = hashToken(resetToken);
         const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour from now
 
-        // Save reset token to user
+        // Save reset token hash to user
         await db.collection('users').updateOne(
             { _id: user._id },
             {
                 $set: {
-                    resetPasswordToken: resetToken,
+                    resetPasswordToken: resetTokenHash,
                     resetPasswordExpiry: resetTokenExpiry
                 }
             }
@@ -234,7 +248,7 @@ const requestPasswordReset = async (req, res) => {
                 lang: user.preferredLanguage || req.lang || 'en'
             });
             await sendEmail({
-                to: email,
+                to: user.email,
                 ...emailContent
             });
         } catch (emailError) {
@@ -243,8 +257,7 @@ const requestPasswordReset = async (req, res) => {
 
         res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
     } catch (error) {
-        console.error('Password reset request error:', error);
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.requestPasswordReset', error, { includeCode: true });
     }
 };
 
@@ -254,9 +267,9 @@ const resetPassword = async (req, res) => {
         const { password } = req.body;
         const db = getDb();
 
-        // Find user by reset token and check expiry
+        // Find user by SHA-256 hash of reset token and check expiry
         const user = await db.collection('users').findOne({
-            resetPasswordToken: token,
+            resetPasswordToken: hashToken(String(token || '')),
             resetPasswordExpiry: { $gt: new Date() }
         });
 
@@ -281,8 +294,7 @@ const resetPassword = async (req, res) => {
 
         res.status(200).json({ message: 'Password reset successful! You can now log in with your new password.' });
     } catch (error) {
-        console.error('Password reset error:', error);
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.resetPassword', error, { includeCode: true });
     }
 };
 
@@ -305,9 +317,7 @@ const googleLogin = async (req, res) => {
         const googleId = payload.sub;
         const db = getDb();
 
-        let user = await db.collection('users').findOne({
-            email: { $regex: `^${escapeEmailRegex(email)}$`, $options: 'i' }
-        });
+        let user = await findUserByEmailInsensitive(db, email);
 
         if (!user) {
             const newUser = {
@@ -325,10 +335,15 @@ const googleLogin = async (req, res) => {
             await db.collection('users').updateOne(
                 { _id: user._id },
                 {
-                    $set: { isVerified: true, googleId, name: user.name || name },
+                    $set: { isVerified: true, googleId, name },
                     $unset: { password: '', verificationToken: '', verificationTokenExpiry: '' }
                 }
             );
+        } else if (user.googleId && user.googleId !== googleId) {
+            return res.status(403).json({
+                code: 'AUTH_PROVIDER_MISMATCH',
+                message: 'This email is already linked to another Google account'
+            });
         } else if (!user.googleId) {
             await db.collection('users').updateOne(
                 { _id: user._id },
@@ -349,12 +364,12 @@ const googleLogin = async (req, res) => {
             token,
             ...(mobileClient ? { refreshToken } : {}),
             userId: user._id,
-            name: user.name || name,
+            name: user.isVerified ? (user.name || name) : name,
             email: user.email,
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.googleLogin', error, { includeCode: true });
     }
 };
 
@@ -396,7 +411,7 @@ const refresh = async (req, res) => {
             preferredLanguage: user.preferredLanguage || 'en'
         });
     } catch (error) {
-        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.refresh', error, { includeCode: true });
     }
 };
 
@@ -416,7 +431,7 @@ const logout = async (req, res) => {
         if (!mobileClient) {
             clearRefreshCookie(res);
         }
-        return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'authController.logout', error, { includeCode: true });
     }
 };
 

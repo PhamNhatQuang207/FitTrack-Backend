@@ -1,10 +1,14 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
+const { safeServerError } = require('../utils/security');
 
 // Get strength progression for a specific exercise
 const getStrengthProgression = async (req, res) => {
     try {
         const { exerciseName } = req.params;
+        if (typeof exerciseName !== 'string' || !exerciseName.trim() || exerciseName.length > 200) {
+            return res.status(400).json({ message: 'Invalid exercise name' });
+        }
         const userId = req.userId;
         const db = getDb();
 
@@ -20,6 +24,10 @@ const getStrengthProgression = async (req, res) => {
 
         // Extract highest weight for each session
         const progressionData = sessions.map(session => {
+            if (!Array.isArray(session.exercises)) return null;
+            const parsedDate = session.date ? new Date(session.date) : null;
+            if (!parsedDate || isNaN(parsedDate.getTime())) return null;
+
             // Find the exercise in this session
             const exercise = session.exercises.find(ex => ex.exerciseName === exerciseName);
             
@@ -29,12 +37,12 @@ const getStrengthProgression = async (req, res) => {
             let maxWeight = exercise.targetWeight || 0;
             
             if (exercise.actualSets && exercise.actualSets.length > 0) {
-                const weights = exercise.actualSets.map(set => set.weight);
+                const weights = exercise.actualSets.map(set => Number(set.weight) || 0);
                 maxWeight = Math.max(...weights);
             }
 
             return {
-                date: session.date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+                date: parsedDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
                 weight: maxWeight,
                 sessionId: session._id,
                 sessionName: session.name
@@ -43,7 +51,7 @@ const getStrengthProgression = async (req, res) => {
 
         res.json(progressionData);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'analyticsController.getStrengthProgression', error);
     }
 };
 
@@ -64,8 +72,9 @@ const getUserExercises = async (req, res) => {
         // Extract unique exercise names
         const exerciseSet = new Set();
         sessions.forEach(session => {
+            if (!Array.isArray(session.exercises)) return;
             session.exercises.forEach(ex => {
-                exerciseSet.add(ex.exerciseName);
+                if (ex?.exerciseName) exerciseSet.add(ex.exerciseName);
             });
         });
 
@@ -73,7 +82,7 @@ const getUserExercises = async (req, res) => {
 
         res.json(exercises);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'analyticsController.getUserExercises', error);
     }
 };
 
@@ -93,10 +102,11 @@ const getWorkoutStats = async (req, res) => {
         // Calculate total volume (sets × reps × weight)
         let totalVolume = 0;
         completed.forEach(session => {
+            if (!Array.isArray(session.exercises)) return;
             session.exercises.forEach(ex => {
-                if (ex.actualSets) {
+                if (Array.isArray(ex.actualSets)) {
                     ex.actualSets.forEach(set => {
-                        totalVolume += (set.reps || 0) * (set.weight || 0);
+                        totalVolume += (Number(set.reps) || 0) * (Number(set.weight) || 0);
                     });
                 }
             });
@@ -106,6 +116,7 @@ const getWorkoutStats = async (req, res) => {
         const workoutsByWeek = {};
         completed.forEach(session => {
             const date = new Date(session.date);
+            if (isNaN(date.getTime())) return;
             const weekKey = `${date.getFullYear()}-W${Math.ceil((date.getDate()) / 7)}`;
             workoutsByWeek[weekKey] = (workoutsByWeek[weekKey] || 0) + 1;
         });
@@ -115,12 +126,12 @@ const getWorkoutStats = async (req, res) => {
             totalPlanned: planned.length,
             totalVolume: Math.round(totalVolume),
             averageExercisesPerWorkout: completed.length > 0
-                ? Math.round(completed.reduce((sum, s) => sum + s.exercises.length, 0) / completed.length)
+                ? Math.round(completed.reduce((sum, s) => sum + (Array.isArray(s.exercises) ? s.exercises.length : 0), 0) / completed.length)
                 : 0,
             workoutFrequency: workoutsByWeek
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'analyticsController.getWorkoutStats', error);
     }
 };
 
@@ -148,7 +159,7 @@ const getWeeklyProgress = async (req, res) => {
 
         res.json(progress);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'analyticsController.getWeeklyProgress', error);
     }
 };
 

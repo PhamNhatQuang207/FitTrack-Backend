@@ -1,6 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/db');
 const { publicDataCache } = require('../utils/memoryCache');
+const { isSafeHttpUrl, safeServerError } = require('../utils/security');
 
 const PUBLIC_CACHE_KEY = 'muscle-groups:public';
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
@@ -119,7 +120,7 @@ const getPublicMuscleGroups = async (req, res) => {
     res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'muscleGroupController.getPublicMuscleGroups', error);
   }
 };
 
@@ -134,12 +135,19 @@ const listAdminMuscleGroups = async (req, res) => {
       .toArray();
     res.json(groups.map(mapGroup));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'muscleGroupController.listAdminMuscleGroups', error);
   }
 };
 
 const createMuscleGroup = async (req, res) => {
   try {
+    if (req.body.iconUrl !== undefined && !isSafeHttpUrl(req.body.iconUrl)) {
+      return res.status(400).json({ message: 'Invalid iconUrl: must be an http or https URL' });
+    }
+    if (req.body.order !== undefined && (typeof req.body.order !== 'number' || !Number.isFinite(req.body.order))) {
+      return res.status(400).json({ message: 'order must be a finite number' });
+    }
+
     const db = getDb();
     await ensureSeeded(db);
     const name = req.body.name.trim();
@@ -163,7 +171,7 @@ const createMuscleGroup = async (req, res) => {
     publicDataCache.del(PUBLIC_CACHE_KEY);
     res.status(201).json(mapGroup({ ...doc, _id: insertedId }));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'muscleGroupController.createMuscleGroup', error);
   }
 };
 
@@ -172,6 +180,18 @@ const updateMuscleGroup = async (req, res) => {
     const { id } = req.params;
     if (!ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Invalid muscle group ID' });
+    }
+    if (req.body.iconUrl !== undefined && !isSafeHttpUrl(req.body.iconUrl)) {
+      return res.status(400).json({ message: 'Invalid iconUrl: must be an http or https URL' });
+    }
+    if (req.body.order !== undefined) {
+      const orderNum =
+        typeof req.body.order === 'number' || (typeof req.body.order === 'string' && req.body.order.trim() !== '')
+          ? Number(req.body.order)
+          : NaN;
+      if (!Number.isFinite(orderNum)) {
+        return res.status(400).json({ message: 'order must be a finite number' });
+      }
     }
 
     const db = getDb();
@@ -184,6 +204,13 @@ const updateMuscleGroup = async (req, res) => {
     if (req.body.name !== undefined) {
       updates.name = req.body.name.trim();
       updates.slug = toSlug(updates.name);
+      const duplicate = await db.collection('muscle_groups').findOne({
+        slug: updates.slug,
+        _id: { $ne: current._id },
+      });
+      if (duplicate) {
+        return res.status(400).json({ message: 'Muscle group with this name already exists' });
+      }
     }
     if (req.body.iconUrl !== undefined) updates.iconUrl = String(req.body.iconUrl).trim();
     if (req.body.order !== undefined) updates.order = Number(req.body.order);
@@ -206,7 +233,7 @@ const updateMuscleGroup = async (req, res) => {
     publicDataCache.del(PUBLIC_CACHE_KEY);
     res.json(mapGroup(updated));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'muscleGroupController.updateMuscleGroup', error);
   }
 };
 
@@ -236,7 +263,7 @@ const mergeMuscleGroup = async (req, res) => {
       target: mapGroup(target),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'muscleGroupController.mergeMuscleGroup', error);
   }
 };
 

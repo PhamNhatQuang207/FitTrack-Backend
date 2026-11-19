@@ -24,6 +24,7 @@ function renderEmailHtml({
   noticeLabel,
   noticeText,
 }) {
+  const safeActionUrl = escapeHtml(actionUrl);
   return `
     <!DOCTYPE html>
     <html>
@@ -40,13 +41,13 @@ function renderEmailHtml({
             ${body}
           </p>
           <div style="text-align: center; margin: 40px 0;">
-            <a href="${actionUrl}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+            <a href="${safeActionUrl}" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px;">
               ${ctaLabel}
             </a>
           </div>
           <div style="margin: 30px 0; padding: 20px; background-color: #f9fafb; border-radius: 8px; border-left: 4px solid #3b82f6;">
             <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;"><strong>${copyLabel}</strong></p>
-            <p style="margin: 0; color: #3b82f6; font-size: 14px; word-break: break-all;">${actionUrl}</p>
+            <p style="margin: 0; color: #3b82f6; font-size: 14px; word-break: break-all;">${safeActionUrl}</p>
           </div>
           <div style="margin: 30px 0; padding: 15px; background-color: ${noticeBg}; border-radius: 8px; border-left: 4px solid ${noticeBorder};">
             <p style="margin: 0; color: ${noticeColor}; font-size: 14px;">⏱️ <strong>${noticeLabel}</strong> ${noticeText}</p>

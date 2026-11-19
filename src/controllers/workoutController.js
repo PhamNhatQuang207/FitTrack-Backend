@@ -1,32 +1,63 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
+const { safeServerError } = require('../utils/security');
+
+const MAX_EXERCISES = 50;
+const MAX_SETS = 50;
+
+const isNonNegativeFiniteNumber = (val) =>
+    (typeof val === 'number' || (typeof val === 'string' && val.trim() !== '')) &&
+    Number.isFinite(Number(val)) &&
+    Number(val) >= 0;
 
 const logWorkout = async (req, res) => {
     try {
         const userId = req.userId;
-        const { date, exercises } = req.body;
+        const { date, exercises } = req.body || {};
         const db = getDb();
 
+        let parsedDate = new Date();
+        if (date !== undefined) {
+            parsedDate = new Date(date);
+            if (isNaN(parsedDate.getTime())) {
+                return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid workout date' });
+            }
+        }
+
         // Validate required fields
-        if (!exercises || !Array.isArray(exercises) || exercises.length === 0) {
-            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Exercises array is required' });
+        if (!exercises || !Array.isArray(exercises) || exercises.length === 0 || exercises.length > MAX_EXERCISES) {
+            return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Exercises array is required (1..50 items)' });
         }
 
         // Validate exercise structure
         for (const exercise of exercises) {
-            if (!exercise.exerciseName || !exercise.category || !exercise.sets || !Array.isArray(exercise.sets)) {
+            if (
+                !exercise ||
+                typeof exercise.exerciseName !== 'string' ||
+                !exercise.exerciseName.trim() ||
+                typeof exercise.category !== 'string' ||
+                !exercise.category.trim() ||
+                !Array.isArray(exercise.sets) ||
+                exercise.sets.length === 0 ||
+                exercise.sets.length > MAX_SETS
+            ) {
                 return res.status(400).json({ 
                     code: 'VALIDATION_ERROR',
-                    message: 'Each exercise must have exerciseName, category, and sets array' 
+                    message: 'Each exercise must have exerciseName, category, and sets array (1..50 items)' 
                 });
             }
 
             // Validate sets structure
             for (const set of exercise.sets) {
-                if (set.setNumber === undefined || set.reps === undefined || set.weight === undefined) {
+                if (
+                    !set ||
+                    !isNonNegativeFiniteNumber(set.setNumber) ||
+                    !isNonNegativeFiniteNumber(set.reps) ||
+                    !isNonNegativeFiniteNumber(set.weight)
+                ) {
                     return res.status(400).json({ 
                         code: 'VALIDATION_ERROR',
-                        message: 'Each set must have setNumber, reps, and weight' 
+                        message: 'Each set must have valid non-negative numeric setNumber, reps, and weight' 
                     });
                 }
             }
@@ -35,10 +66,10 @@ const logWorkout = async (req, res) => {
         // Create workout document
         const workout = {
             userId: new ObjectId(userId),
-            date: date ? new Date(date) : new Date(),
+            date: parsedDate,
             exercises: exercises.map(exercise => ({
-                exerciseName: exercise.exerciseName,
-                category: exercise.category,
+                exerciseName: exercise.exerciseName.trim(),
+                category: exercise.category.trim(),
                 sets: exercise.sets.map(set => ({
                     setNumber: Number(set.setNumber),
                     reps: Number(set.reps),
@@ -56,7 +87,7 @@ const logWorkout = async (req, res) => {
             workoutId: result.insertedId 
         });
     } catch (error) {
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'workoutController.logWorkout', error, { includeCode: true });
     }
 };
 
@@ -73,7 +104,7 @@ const getWorkouts = async (req, res) => {
 
         res.json(workouts);
     } catch (error) {
-        res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+        return safeServerError(res, 'workoutController.getWorkouts', error, { includeCode: true });
     }
 };
 

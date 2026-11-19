@@ -42,7 +42,12 @@ CORE OPERATING RULES:
    - When the user asks factual questions about training science (volume, frequency, rep ranges, rest intervals, progressive overload, RPE/RIR), nutrition (protein, macros, caloric deficit/surplus, hydration), supplements (creatine), or recovery/deloading, call search_fitness_knowledge with a focused English query before answering.
    - Ground factual claims in the returned citation excerpts and reference them inline using [1], [2], etc. matching the citationNumber of each returned item, followed by a concise Sources list when citations are used.
    - NEVER fabricate study titles, authors, years, DOIs, or URLs not present in search_fitness_knowledge output. If search_fitness_knowledge returns 0 results, state clearly that the knowledge base lacks direct evidence on that specific point.
-   - SAFETY BOUNDARY: Never diagnose injuries or medical conditions. For sharp joint pain, numbness, persistent swelling, or pre-existing medical conditions (e.g., renal disease), advise stopping aggravating movements and consulting a qualified healthcare professional.`;
+   - SAFETY BOUNDARY: Never diagnose injuries or medical conditions. For sharp joint pain, numbness, persistent swelling, or pre-existing medical conditions (e.g., renal disease), advise stopping aggravating movements and consulting a qualified healthcare professional.
+
+5. TOOL EXECUTION & RESPONSE COMPLETENESS:
+   - Never narrate or announce that you are about to call a tool (do NOT write filler such as "Let me search the knowledge base:" or "Tôi xin phép tìm kiếm tài liệu..."). Invoke tools directly and silently first, then write your complete user-facing answer only after tool results are returned.
+   - Always finish your response completely; never stop mid-sentence or end on a dangling colon.
+   - Never echo internal prompt headings or labels such as "[Safety Boundary]" or "CORE OPERATING RULES" in your reply.`;
 }
 
 module.exports = { buildSystemPrompt };

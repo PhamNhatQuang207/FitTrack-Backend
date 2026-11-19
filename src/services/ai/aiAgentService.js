@@ -5,6 +5,21 @@ const { createExecutionLoopGuard } = require('./guards/executionLoopGuard');
 const { generateAgentTurn } = require('./geminiClient');
 const { buildSystemPrompt } = require('./systemPrompt');
 
+const MAX_INCOMPLETE_RETRIES = 1;
+const NARRATED_TOOL_INTENT_REGEX =
+  /(?:let me|i will|i'll|xin phép|để mình|để tôi)\s+(?:search|check|look up|query|fetch|tìm kiếm|tra cứu|kiểm tra)[^.?!]{0,140}(?:\.{3}|…|:)\s*$/i;
+
+/**
+ * Detect premature stops where the model announces a tool call or ends on a dangling colon.
+ */
+function isIncompleteToolNarration(text, toolCallsSoFar = 0) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  if (trimmed.endsWith(':')) return true;
+  if (toolCallsSoFar === 0 && NARRATED_TOOL_INTENT_REGEX.test(trimmed)) return true;
+  return false;
+}
+
 function sanitizeJsonSchemaForGemini(schema) {
   if (!schema || typeof schema !== 'object') return schema;
   const clone = Array.isArray(schema) ? [...schema] : { ...schema };
@@ -60,15 +75,20 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories, 
 
     const systemInstruction = buildSystemPrompt(memories, lang);
     let finalAssistantText = '';
+    let incompleteRetries = 0;
+    let maxTokensPrefix = '';
+    let lastNonEmptyText = '';
 
     while (true) {
       const stepCheck = loopGuard.canStep();
       if (!stepCheck.ok) {
         if (!finalAssistantText) {
           finalAssistantText =
-            lang === 'vi'
+            maxTokensPrefix ||
+            lastNonEmptyText ||
+            (lang === 'vi'
               ? 'Mình đã tổng hợp thông tin từ dữ liệu tập luyện của bạn. Vui lòng xem kết quả bên dưới!'
-              : 'I have compiled the information from your training data. Please check the results below!';
+              : 'I have compiled the information from your training data. Please check the results below!');
         }
         break;
       }
@@ -81,13 +101,64 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories, 
 
       const functionCalls = turn.functionCalls || [];
       if (functionCalls.length === 0) {
-        finalAssistantText =
-          (turn.text || '').trim() ||
-          (lang === 'vi'
-            ? 'Mình đã xử lý yêu cầu của bạn. Vui lòng kiểm tra chi tiết bên dưới!'
-            : 'I have processed your request. Please check the details below!');
+        const trimmedText = (turn.text || '').trim();
+        const finishReason = turn.finishReason || null;
+        if (trimmedText) {
+          lastNonEmptyText = trimmedText;
+        }
+
+        const isMalformed = finishReason === 'MALFORMED_FUNCTION_CALL';
+        const isMaxTokens = finishReason === 'MAX_TOKENS' && Boolean(trimmedText);
+        const isNarratedStop = isIncompleteToolNarration(
+          trimmedText,
+          loopGuard.getToolTrace().length
+        );
+
+        if (
+          incompleteRetries < MAX_INCOMPLETE_RETRIES &&
+          (isMalformed || isMaxTokens || isNarratedStop)
+        ) {
+          incompleteRetries += 1;
+          if (isMaxTokens) {
+            maxTokensPrefix = maxTokensPrefix
+              ? `${maxTokensPrefix}\n${trimmedText}`
+              : trimmedText;
+          }
+
+          const continuationPrompt = isMaxTokens
+            ? 'Continue directly from where you stopped and finish your response concisely without repeating previous text.'
+            : 'Do not announce tool usage or stop mid-response. Immediately invoke the required tool now with valid arguments, or provide your complete final answer.';
+
+          if (trimmedText) {
+            contents.push({ role: 'model', parts: [{ text: trimmedText }] });
+            contents.push({ role: 'user', parts: [{ text: continuationPrompt }] });
+          } else if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+            const lastEntry = contents[contents.length - 1];
+            contents[contents.length - 1] = {
+              ...lastEntry,
+              parts: [...(lastEntry.parts || []), { text: continuationPrompt }]
+            };
+          } else {
+            contents.push({ role: 'user', parts: [{ text: continuationPrompt }] });
+          }
+          continue;
+        }
+
+        if (maxTokensPrefix && trimmedText) {
+          finalAssistantText = `${maxTokensPrefix}\n${trimmedText}`;
+        } else {
+          finalAssistantText =
+            trimmedText ||
+            maxTokensPrefix ||
+            lastNonEmptyText ||
+            (lang === 'vi'
+              ? 'Mình đã xử lý yêu cầu của bạn. Vui lòng kiểm tra chi tiết bên dưới!'
+              : 'I have processed your request. Please check the details below!');
+        }
         break;
       }
+
+      maxTokensPrefix = '';
 
       // Append model functionCall turn — preserve rawCandidates[0].content so
       // Gemini 3.x thought_signature and thought parts remain intact across tool rounds
@@ -202,5 +273,6 @@ async function runAiChatTurn({ db, userId, historyMessages, userText, memories, 
 }
 
 module.exports = {
-  runAiChatTurn
+  runAiChatTurn,
+  isIncompleteToolNarration
 };

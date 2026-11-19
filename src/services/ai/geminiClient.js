@@ -25,9 +25,12 @@ async function generateAgentTurn({ systemInstruction, contents, tools }) {
     }
   });
 
+  const finishReason = response.candidates?.[0]?.finishReason || null;
+
   return {
     functionCalls: response.functionCalls || [],
     text: response.text || '',
+    finishReason,
     rawCandidates: response.candidates || []
   };
 }

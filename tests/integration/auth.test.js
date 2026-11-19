@@ -5,7 +5,7 @@ const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const app = require('../../src/app');
-const { REFRESH_COOKIE_NAME, REFRESH_COLLECTION, getBaseCookieOptions } = require('../../src/utils/refreshToken');
+const { REFRESH_COOKIE_NAME, REFRESH_COLLECTION, getBaseCookieOptions, hashToken } = require('../../src/utils/refreshToken');
 const sendEmailSmart = require('../../src/utils/sendEmailSmart');
 const { startTestDb, stopTestDb, clearDb } = require('../setup/testDb');
 const { getDb } = require('../../src/config/db');
@@ -194,7 +194,7 @@ describe('GET /api/auth/verify-email/:token', () => {
     await seedUser({
       email: 'v@test.com',
       isVerified: false,
-      verificationToken: 'tok-verify',
+      verificationToken: hashToken('tok-verify'),
       verificationTokenExpiry: hoursFromNow(1),
     });
     const res = await request(app).get('/api/auth/verify-email/tok-verify');
@@ -210,7 +210,7 @@ describe('GET /api/auth/verify-email/:token', () => {
     await seedUser({
       email: 'old@test.com',
       isVerified: false,
-      verificationToken: 'tok-expired',
+      verificationToken: hashToken('tok-expired'),
       verificationTokenExpiry: hoursFromNow(-1),
     });
     const res = await request(app).get('/api/auth/verify-email/tok-expired');
@@ -221,7 +221,7 @@ describe('GET /api/auth/verify-email/:token', () => {
   });
 
   test('SECURITY: rejects a legacy token that carries no expiry at all', async () => {
-    await seedUser({ email: 'legacy@test.com', isVerified: false, verificationToken: 'tok-legacy' });
+    await seedUser({ email: 'legacy@test.com', isVerified: false, verificationToken: hashToken('tok-legacy') });
     const res = await request(app).get('/api/auth/verify-email/tok-legacy');
 
     expect(res.status).toBe(400);
@@ -235,7 +235,7 @@ describe('GET /api/auth/verify-email/:token', () => {
   });
 
   test('is idempotent for an already-verified user', async () => {
-    await seedUser({ email: 'a@test.com', isVerified: true, verificationToken: 'still-here' });
+    await seedUser({ email: 'a@test.com', isVerified: true, verificationToken: hashToken('still-here') });
     const res = await request(app).get('/api/auth/verify-email/still-here');
     expect(res.status).toBe(200);
     expect(res.body.message).toMatch(/already verified/i);
@@ -284,7 +284,7 @@ describe('POST /api/auth/reset-password/:token (SECURITY FIX #3)', () => {
   test('resets the password with a valid, unexpired token', async () => {
     await seedUser({
       email: 'r@test.com',
-      resetPasswordToken: 'valid-reset',
+      resetPasswordToken: hashToken('valid-reset'),
       resetPasswordExpiry: futureExpiry(),
     });
 
@@ -302,7 +302,7 @@ describe('POST /api/auth/reset-password/:token (SECURITY FIX #3)', () => {
   test('rejects an expired token', async () => {
     await seedUser({
       email: 'r@test.com',
-      resetPasswordToken: 'expired-reset',
+      resetPasswordToken: hashToken('expired-reset'),
       resetPasswordExpiry: new Date(Date.now() - 1000),
     });
 
@@ -323,7 +323,7 @@ describe('POST /api/auth/reset-password/:token (SECURITY FIX #3)', () => {
   test('SECURITY: enforces the 6-character minimum on the new password', async () => {
     await seedUser({
       email: 'r@test.com',
-      resetPasswordToken: 'valid-reset',
+      resetPasswordToken: hashToken('valid-reset'),
       resetPasswordExpiry: futureExpiry(),
     });
 
@@ -455,7 +455,7 @@ describe('Refresh token cookie flow (POST /api/auth/refresh & /logout)', () => {
   test('resetPassword revokes active refresh tokens for the user', async () => {
     const userId = await seedUser({
       email: 'resetrevoke@test.com',
-      resetPasswordToken: 'reset-tok',
+      resetPasswordToken: hashToken('reset-tok'),
       resetPasswordExpiry: new Date(Date.now() + 3600 * 1000),
     });
 

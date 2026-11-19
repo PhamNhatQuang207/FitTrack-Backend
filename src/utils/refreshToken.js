@@ -59,7 +59,10 @@ const clearRefreshCookie = (res) => {
 };
 
 const signAccessToken = (userId) =>
-    jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN });
+    jwt.sign({ userId }, process.env.JWT_SECRET, {
+        algorithm: 'HS256',
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    });
 
 const createRefreshTokenRecord = async ({ db, userId }) => {
     const rawToken = crypto.randomBytes(40).toString('hex');

@@ -1,6 +1,7 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
 const { publicDataCache } = require('../utils/memoryCache');
+const { safeServerError } = require('../utils/security');
 
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
 
@@ -26,7 +27,7 @@ const getAllExercises = async (req, res) => {
         res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
         res.json(payload);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'exerciseController.getAllExercises', error);
     }
 };
 
@@ -34,6 +35,9 @@ const getAllExercises = async (req, res) => {
 const getExercisesByCategory = async (req, res) => {
     try {
         const { category } = req.params;
+        if (typeof category !== 'string' || !category.trim() || category.length > 100) {
+            return res.status(400).json({ message: 'Invalid category' });
+        }
         
         // Convert category format (e.g., "middle_back" to "Middle Back")
         const formattedCategory = category
@@ -62,7 +66,7 @@ const getExercisesByCategory = async (req, res) => {
         res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
         res.json(payload);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'exerciseController.getExercisesByCategory', error);
     }
 };
 
@@ -103,7 +107,7 @@ const searchExercises = async (req, res) => {
             _id: undefined
         })));
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'exerciseController.searchExercises', error);
     }
 };
 
@@ -111,6 +115,10 @@ const searchExercises = async (req, res) => {
 const getExerciseById = async (req, res) => {
     try {
         const { id } = req.params;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid exercise ID' });
+        }
+
         const cacheKey = `exercises:id:${id}`;
         const cached = publicDataCache.get(cacheKey);
         if (cached) {
@@ -135,7 +143,7 @@ const getExerciseById = async (req, res) => {
         res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
         res.json(payload);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'exerciseController.getExerciseById', error);
     }
 };
 

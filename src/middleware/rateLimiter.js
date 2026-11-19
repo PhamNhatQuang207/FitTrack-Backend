@@ -18,10 +18,23 @@ const limiter = rateLimit({
 const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
     max: isDevelopment ? 10000 : 50, // Increased from 5 to 50
+    standardHeaders: true,
+    legacyHeaders: false,
     message: {
         message: 'Too many login attempts from this IP, please try again after an hour'
     },
     skip: (req) => isDevelopment // Skip entirely in development
+});
+
+const tokenLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: isDevelopment ? 10000 : 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        message: 'Too many token requests, please try again later'
+    },
+    skip: () => isDevelopment
 });
 
 const aiChatLimiter = rateLimit({
@@ -47,4 +60,4 @@ const mcpLimiter = rateLimit({
 });
 
 // isDevelopment exported for unit testing of the fail-closed behaviour.
-module.exports = { limiter, authLimiter, aiChatLimiter, mcpLimiter, isDevelopment };
+module.exports = { limiter, authLimiter, tokenLimiter, aiChatLimiter, mcpLimiter, isDevelopment };

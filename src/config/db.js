@@ -6,6 +6,18 @@ dotenv.config();
 let client;
 let db;
 
+const ensureIndexes = async (database) => {
+  try {
+    await Promise.all([
+      database.collection('refresh-tokens').createIndex({ tokenHash: 1 }, { unique: true }),
+      database.collection('refresh-tokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+      database.collection('users').createIndex({ mcpApiKeyHash: 1 }, { sparse: true }),
+    ]);
+  } catch (err) {
+    console.warn('⚠️ Failed to ensure MongoDB indexes:', err.message);
+  }
+};
+
 const connectDB = async () => {
   // Read connection info at call time so tests (and env reloads) are respected.
   const url = process.env.MONGO_URI;
@@ -15,6 +27,7 @@ const connectDB = async () => {
     await client.connect();
     console.log('✅ Connected successfully to MongoDB');
     db = client.db(dbName);
+    await ensureIndexes(db);
     return db;
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);

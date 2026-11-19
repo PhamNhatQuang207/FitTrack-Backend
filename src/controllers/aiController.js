@@ -5,6 +5,7 @@ const { validateUserInput } = require('../services/ai/guards/inputGuard');
 const { validateAndNormalizeDays } = require('../services/ai/guards/groundingAndSchemaGuard');
 const { isGeminiConfigured } = require('../services/ai/geminiClient');
 const { runAiChatTurn } = require('../services/ai/aiAgentService');
+const { safeServerError } = require('../utils/security');
 
 const MAX_CONTEXT_MESSAGES = 14;
 const MAX_STORED_MESSAGES = 100;
@@ -134,11 +135,16 @@ const chatWithAi = async (req, res) => {
       memoriesUpdated: agentResponse.memoriesUpdated
     });
   } catch (error) {
+    console.error('[aiController.chatWithAi]', error);
     const status = error.statusCode || (error.status === 429 ? 429 : 502);
     const code = status === 429 ? 'AI_RATE_LIMITED' : 'AI_UNAVAILABLE';
+    const safeMessage =
+      status === 429
+        ? 'AI service rate limit exceeded. Please try again later.'
+        : 'AI Assistant encountered an upstream error.';
     return res.status(status).json({
       code,
-      message: error.message || 'AI Assistant encountered an upstream error.'
+      message: safeMessage
     });
   }
 };
@@ -163,7 +169,7 @@ const getConversations = async (req, res) => {
       }))
     );
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.getConversations', error, { includeCode: true });
   }
 };
 
@@ -189,7 +195,7 @@ const getConversationById = async (req, res) => {
       messages: doc.messages || []
     });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.getConversationById', error, { includeCode: true });
   }
 };
 
@@ -209,7 +215,7 @@ const deleteConversation = async (req, res) => {
     }
     return res.json({ message: 'Conversation deleted successfully' });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.deleteConversation', error, { includeCode: true });
   }
 };
 
@@ -232,7 +238,7 @@ const getMemories = async (req, res) => {
       }))
     );
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.getMemories', error, { includeCode: true });
   }
 };
 
@@ -252,7 +258,7 @@ const deleteMemoryById = async (req, res) => {
     }
     return res.json({ message: 'Memory deleted successfully' });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.deleteMemoryById', error, { includeCode: true });
   }
 };
 
@@ -293,220 +299,258 @@ const applyDraftPlan = async (req, res) => {
       });
     }
 
-    // Re-validate exercises and 7-day structure before writing to DB
-    const { mode, targetScheduleId, targetPlanId, plan } = targetMessage.draftPlan;
-    const validation = await validateAndNormalizeDays({ db, days: plan.days });
-    if (!validation.ok) {
-      return res.status(400).json({ code: 'VALIDATION_ERROR', message: validation.error });
+    // Atomically claim an in-flight lock so concurrent requests cannot double-apply
+    const claimed = await db.collection('ai-conversations').findOneAndUpdate(
+      {
+        _id: conversation._id,
+        userId: userObjectId,
+        [`messages.${msgIndex}.id`]: messageId,
+        [`messages.${msgIndex}.draftPlan.appliedAt`]: null,
+        [`messages.${msgIndex}.draftPlan.applying`]: { $ne: true }
+      },
+      { $set: { [`messages.${msgIndex}.draftPlan.applying`]: true } },
+      { returnDocument: 'before' }
+    );
+    if (!claimed) {
+      return res.status(409).json({
+        code: 'AI_PLAN_ALREADY_APPLIED',
+        message: 'This draft plan has already been applied'
+      });
     }
 
-    const normalizedDays = validation.days;
-    const now = new Date();
-    const monday = getMonday(now);
-    const sunday = new Date(monday);
-    sunday.setDate(sunday.getDate() + 6);
-    const weekNumber = getWeekNumber(monday);
-    const year = monday.getFullYear();
-
-    let appliedPlanId = null;
-    let appliedScheduleId = null;
-
-    if (mode === 'edit_schedule') {
-      const scheduleFilter = { userId: userObjectId, status: 'active' };
-      if (targetScheduleId && ObjectId.isValid(targetScheduleId)) {
-        scheduleFilter._id = new ObjectId(targetScheduleId);
-      }
-
-      const activeSchedule = await db
-        .collection('weekly-schedules')
-        .findOne(scheduleFilter, { sort: { startDate: -1, createdAt: -1 } });
-
-      if (!activeSchedule) {
-        return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Active weekly schedule not found' });
-      }
-
-      const baseMonday = activeSchedule.startDate ? getMonday(new Date(activeSchedule.startDate)) : monday;
-      const mergedScheduleDays = normalizedDays.map((day, index) => {
-        const existingDay = (activeSchedule.days || []).find((d) => d.dayOfWeek === index);
-        const dayDate = new Date(baseMonday);
-        dayDate.setDate(dayDate.getDate() + index);
-
-        // Preserve already completed day state
-        if (existingDay?.workout?.isCompleted && !day.isRestDay) {
-          return {
-            ...existingDay,
-            dayOfWeek: index,
-            dayName: day.dayName,
-            date: existingDay.date || dayDate
-          };
-        }
-
-        return {
-          dayOfWeek: day.dayOfWeek,
-          dayName: day.dayName,
-          date: existingDay?.date || dayDate,
-          isRestDay: day.isRestDay,
-          workout: day.isRestDay
-            ? null
-            : {
-                name: day.workout.name,
-                exercises: day.workout.exercises.map((ex) => ({
-                  ...ex,
-                  isCompleted: false,
-                  actualSets: []
-                })),
-                isCompleted: false,
-                completedAt: null
-              }
-        };
-      });
-
-      const totalWorkoutDays = mergedScheduleDays.filter((d) => !d.isRestDay).length;
-      const completedDays = mergedScheduleDays.filter((d) => d.workout?.isCompleted).length;
-
-      await db.collection('weekly-schedules').updateOne(
-        { _id: activeSchedule._id, userId: userObjectId },
-        {
-          $set: {
-            weeklyPlanName: plan.name || activeSchedule.weeklyPlanName,
-            days: mergedScheduleDays,
-            totalWorkoutDays,
-            completedDays,
-            updatedAt: now
-          }
-        }
+    const releaseLock = async () => {
+      await db.collection('ai-conversations').updateOne(
+        { _id: conversation._id, userId: userObjectId },
+        { $unset: { [`messages.${msgIndex}.draftPlan.applying`]: '' } }
       );
+    };
 
-      appliedScheduleId = activeSchedule._id.toString();
+    try {
+      // Re-validate exercises and 7-day structure before writing to DB
+      const { mode, targetScheduleId, targetPlanId, plan } = targetMessage.draftPlan;
+      const validation = await validateAndNormalizeDays({ db, days: plan.days });
+      if (!validation.ok) {
+        await releaseLock();
+        return res.status(400).json({ code: 'VALIDATION_ERROR', message: validation.error });
+      }
 
-      const requestedAction = req.body?.action || 'update_schedule_and_plan';
-      const linkedPlanId = targetPlanId || activeSchedule.weeklyPlanId?.toString();
-      if (
-        requestedAction !== 'update_schedule_only' &&
-        linkedPlanId &&
-        ObjectId.isValid(linkedPlanId)
-      ) {
-        await db.collection('weekly-plans').updateOne(
-          { _id: new ObjectId(linkedPlanId), userId: userObjectId },
+      const normalizedDays = validation.days;
+      const now = new Date();
+      const monday = getMonday(now);
+      const sunday = new Date(monday);
+      sunday.setDate(sunday.getDate() + 6);
+      const weekNumber = getWeekNumber(monday);
+      const year = monday.getFullYear();
+
+      let appliedPlanId = null;
+      let appliedScheduleId = null;
+
+      if (mode === 'edit_schedule') {
+        const scheduleFilter = { userId: userObjectId, status: 'active' };
+        if (targetScheduleId && ObjectId.isValid(targetScheduleId)) {
+          scheduleFilter._id = new ObjectId(targetScheduleId);
+        }
+
+        const activeSchedule = await db
+          .collection('weekly-schedules')
+          .findOne(scheduleFilter, { sort: { startDate: -1, createdAt: -1 } });
+
+        if (!activeSchedule) {
+          await releaseLock();
+          return res.status(404).json({ code: 'SCHEDULE_NOT_FOUND', message: 'Active weekly schedule not found' });
+        }
+
+        const baseMonday = activeSchedule.startDate ? getMonday(new Date(activeSchedule.startDate)) : monday;
+        const mergedScheduleDays = normalizedDays.map((day, index) => {
+          const existingDay = (activeSchedule.days || []).find((d) => d.dayOfWeek === index);
+          const dayDate = new Date(baseMonday);
+          dayDate.setDate(dayDate.getDate() + index);
+
+          // Preserve already completed day state
+          if (existingDay?.workout?.isCompleted && !day.isRestDay) {
+            return {
+              ...existingDay,
+              dayOfWeek: index,
+              dayName: day.dayName,
+              date: existingDay.date || dayDate
+            };
+          }
+
+          return {
+            dayOfWeek: day.dayOfWeek,
+            dayName: day.dayName,
+            date: existingDay?.date || dayDate,
+            isRestDay: day.isRestDay,
+            workout: day.isRestDay
+              ? null
+              : {
+                  name: day.workout.name,
+                  exercises: day.workout.exercises.map((ex) => ({
+                    ...ex,
+                    isCompleted: false,
+                    actualSets: []
+                  })),
+                  isCompleted: false,
+                  completedAt: null
+                }
+          };
+        });
+
+        const totalWorkoutDays = mergedScheduleDays.filter((d) => !d.isRestDay).length;
+        const completedDays = mergedScheduleDays.filter((d) => d.workout?.isCompleted).length;
+
+        await db.collection('weekly-schedules').updateOne(
+          { _id: activeSchedule._id, userId: userObjectId },
           {
             $set: {
-              name: plan.name || activeSchedule.weeklyPlanName,
+              weeklyPlanName: plan.name || activeSchedule.weeklyPlanName,
+              days: mergedScheduleDays,
+              totalWorkoutDays,
+              completedDays,
+              updatedAt: now
+            }
+          }
+        );
+
+        appliedScheduleId = activeSchedule._id.toString();
+
+        const requestedAction = req.body?.action || 'update_schedule_and_plan';
+        const linkedPlanId = targetPlanId || activeSchedule.weeklyPlanId?.toString();
+        if (
+          requestedAction !== 'update_schedule_only' &&
+          linkedPlanId &&
+          ObjectId.isValid(linkedPlanId)
+        ) {
+          await db.collection('weekly-plans').updateOne(
+            { _id: new ObjectId(linkedPlanId), userId: userObjectId },
+            {
+              $set: {
+                name: plan.name || activeSchedule.weeklyPlanName,
+                days: normalizedDays,
+                updatedAt: now
+              }
+            }
+          );
+          appliedPlanId = linkedPlanId;
+        }
+      } else if (mode === 'update_plan') {
+        if (!targetPlanId || !ObjectId.isValid(targetPlanId)) {
+          await releaseLock();
+          return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid targetPlanId for update_plan' });
+        }
+        const updateRes = await db.collection('weekly-plans').updateOne(
+          { _id: new ObjectId(targetPlanId), userId: userObjectId },
+          {
+            $set: {
+              name: plan.name,
+              description: plan.description || '',
               days: normalizedDays,
               updatedAt: now
             }
           }
         );
-        appliedPlanId = linkedPlanId;
-      }
-    } else if (mode === 'update_plan') {
-      if (!targetPlanId || !ObjectId.isValid(targetPlanId)) {
-        return res.status(400).json({ code: 'VALIDATION_ERROR', message: 'Invalid targetPlanId for update_plan' });
-      }
-      const updateRes = await db.collection('weekly-plans').updateOne(
-        { _id: new ObjectId(targetPlanId), userId: userObjectId },
-        {
-          $set: {
-            name: plan.name,
-            description: plan.description || '',
-            days: normalizedDays,
-            updatedAt: now
-          }
+        if (updateRes.matchedCount === 0) {
+          await releaseLock();
+          return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan template not found' });
         }
-      );
-      if (updateRes.matchedCount === 0) {
-        return res.status(404).json({ code: 'PLAN_NOT_FOUND', message: 'Weekly plan template not found' });
-      }
-      appliedPlanId = targetPlanId;
-    } else {
-      // mode === 'create_schedule':
-      // - action === 'save_plan': only save template in weekly-plans (do not overwrite current weekly-schedules)
-      // - action === 'activate_schedule' (or default): save in weekly-plans AND start/replace active weekly-schedules
-      const requestedAction = req.body?.action || 'activate_schedule';
-      const planDoc = {
-        userId: userObjectId,
-        name: plan.name,
-        description: plan.description || '',
-        days: normalizedDays,
-        createdAt: now,
-        updatedAt: now
-      };
-      const planInsert = await db.collection('weekly-plans').insertOne(planDoc);
-      appliedPlanId = planInsert.insertedId.toString();
-
-      if (requestedAction !== 'save_plan') {
-        // Mark any prior active schedule for this user as completed/superseded so the new schedule becomes the active one
-        await db.collection('weekly-schedules').updateMany(
-          { userId: userObjectId, status: 'active' },
-          { $set: { status: 'completed', updatedAt: now } }
-        );
-
-        const scheduleDoc = {
+        appliedPlanId = targetPlanId;
+      } else {
+        // mode === 'create_schedule':
+        // - action === 'save_plan': only save template in weekly-plans (do not overwrite current weekly-schedules)
+        // - action === 'activate_schedule' (or default): save in weekly-plans AND start/replace active weekly-schedules
+        const requestedAction = req.body?.action || 'activate_schedule';
+        const planDoc = {
           userId: userObjectId,
-          weeklyPlanId: planInsert.insertedId,
-          weeklyPlanName: plan.name,
-          weekNumber,
-          year,
-          startDate: monday,
-          endDate: sunday,
-          status: 'active',
-          days: normalizedDays.map((day, index) => {
-            const dayDate = new Date(monday);
-            dayDate.setDate(dayDate.getDate() + index);
-            return {
-              dayOfWeek: day.dayOfWeek,
-              dayName: day.dayName,
-              date: dayDate,
-              isRestDay: day.isRestDay,
-              workout: day.isRestDay
-                ? null
-                : {
-                    name: day.workout.name,
-                    exercises: day.workout.exercises.map((ex) => ({
-                      ...ex,
-                      isCompleted: false,
-                      actualSets: []
-                    })),
-                    isCompleted: false,
-                    completedAt: null
-                  }
-            };
-          }),
-          completedDays: 0,
-          totalWorkoutDays: normalizedDays.filter((d) => !d.isRestDay).length,
+          name: plan.name,
+          description: plan.description || '',
+          days: normalizedDays,
           createdAt: now,
           updatedAt: now
         };
+        const planInsert = await db.collection('weekly-plans').insertOne(planDoc);
+        appliedPlanId = planInsert.insertedId.toString();
 
-        const scheduleInsert = await db.collection('weekly-schedules').insertOne(scheduleDoc);
-        appliedScheduleId = scheduleInsert.insertedId.toString();
-      }
-    }
+        if (requestedAction !== 'save_plan') {
+          // Mark any prior active schedule for this user as completed/superseded so the new schedule becomes the active one
+          await db.collection('weekly-schedules').updateMany(
+            { userId: userObjectId, status: 'active' },
+            { $set: { status: 'completed', updatedAt: now } }
+          );
 
-    await db.collection('ai-conversations').updateOne(
-      { _id: conversation._id, userId: userObjectId },
-      {
-        $set: {
-          [`messages.${msgIndex}.draftPlan.appliedPlanId`]: appliedPlanId,
-          [`messages.${msgIndex}.draftPlan.appliedScheduleId`]: appliedScheduleId,
-          [`messages.${msgIndex}.draftPlan.appliedAt`]: now,
-          updatedAt: now
+          const scheduleDoc = {
+            userId: userObjectId,
+            weeklyPlanId: planInsert.insertedId,
+            weeklyPlanName: plan.name,
+            weekNumber,
+            year,
+            startDate: monday,
+            endDate: sunday,
+            status: 'active',
+            days: normalizedDays.map((day, index) => {
+              const dayDate = new Date(monday);
+              dayDate.setDate(dayDate.getDate() + index);
+              return {
+                dayOfWeek: day.dayOfWeek,
+                dayName: day.dayName,
+                date: dayDate,
+                isRestDay: day.isRestDay,
+                workout: day.isRestDay
+                  ? null
+                  : {
+                      name: day.workout.name,
+                      exercises: day.workout.exercises.map((ex) => ({
+                        ...ex,
+                        isCompleted: false,
+                        actualSets: []
+                      })),
+                      isCompleted: false,
+                      completedAt: null
+                    }
+              };
+            }),
+            completedDays: 0,
+            totalWorkoutDays: normalizedDays.filter((d) => !d.isRestDay).length,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          const scheduleInsert = await db.collection('weekly-schedules').insertOne(scheduleDoc);
+          appliedScheduleId = scheduleInsert.insertedId.toString();
         }
       }
-    );
 
-    return res.status(200).json({
-      message:
-        mode === 'edit_schedule'
-          ? 'Active weekly schedule updated successfully'
-          : appliedScheduleId
-          ? 'New weekly plan and schedule started successfully'
-          : 'Weekly plan saved to library successfully',
-      mode,
-      planId: appliedPlanId,
-      scheduleId: appliedScheduleId
-    });
+      await db.collection('ai-conversations').updateOne(
+        { _id: conversation._id, userId: userObjectId },
+        {
+          $set: {
+            [`messages.${msgIndex}.draftPlan.appliedPlanId`]: appliedPlanId,
+            [`messages.${msgIndex}.draftPlan.appliedScheduleId`]: appliedScheduleId,
+            [`messages.${msgIndex}.draftPlan.appliedAt`]: now,
+            updatedAt: now
+          },
+          $unset: {
+            [`messages.${msgIndex}.draftPlan.applying`]: ''
+          }
+        }
+      );
+
+      return res.status(200).json({
+        message:
+          mode === 'edit_schedule'
+            ? 'Active weekly schedule updated successfully'
+            : appliedScheduleId
+            ? 'New weekly plan and schedule started successfully'
+            : 'Weekly plan saved to library successfully',
+        mode,
+        planId: appliedPlanId,
+        scheduleId: appliedScheduleId
+      });
+    } catch (innerError) {
+      await releaseLock().catch(() => {});
+      throw innerError;
+    }
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.applyDraftPlan', error, { includeCode: true });
   }
 };
 
@@ -523,7 +567,7 @@ const getMcpKeyStatus = async (req, res) => {
       createdAt: user?.mcpApiKeyCreatedAt || null
     });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.getMcpKeyStatus', error, { includeCode: true });
   }
 };
 
@@ -552,7 +596,7 @@ const generateMcpKey = async (req, res) => {
       createdAt: now
     });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.generateMcpKey', error, { includeCode: true });
   }
 };
 
@@ -574,7 +618,7 @@ const revokeMcpKey = async (req, res) => {
       message: 'MCP API key revoked successfully'
     });
   } catch (error) {
-    return res.status(500).json({ code: 'SERVER_ERROR', message: error.message });
+    return safeServerError(res, 'aiController.revokeMcpKey', error, { includeCode: true });
   }
 };
 

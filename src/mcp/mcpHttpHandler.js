@@ -24,10 +24,11 @@ async function mcpHttpHandler(req, res) {
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
+    console.error('[mcpHttpHandler]', error);
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: '2.0',
-        error: { code: -32603, message: error.message || 'Internal MCP server error' },
+        error: { code: -32603, message: 'Internal MCP server error' },
         id: null
       });
     }

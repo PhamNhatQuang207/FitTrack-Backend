@@ -1,5 +1,6 @@
 const { getDb } = require('../config/db');
 const { publicDataCache } = require('../utils/memoryCache');
+const { isSafeHttpUrl, safeServerError } = require('../utils/security');
 
 const SITE_CONFIG_CACHE_KEY = 'site-config:public';
 const PUBLIC_CACHE_CONTROL = 'public, max-age=60, stale-while-revalidate=300';
@@ -34,7 +35,7 @@ const getPublicSiteConfig = async (req, res) => {
     res.set('Cache-Control', PUBLIC_CACHE_CONTROL);
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'siteConfigController.getPublicSiteConfig', error);
   }
 };
 
@@ -42,6 +43,9 @@ const updateSiteConfig = async (req, res) => {
   try {
     const db = getDb();
     const { heroBackgroundUrl = '', announcementBanner = '', featuredNote = '' } = req.body;
+    if (!isSafeHttpUrl(heroBackgroundUrl)) {
+      return res.status(400).json({ message: 'Invalid heroBackgroundUrl: must be an http or https URL' });
+    }
     const updateDoc = {
       heroBackgroundUrl: String(heroBackgroundUrl).trim(),
       announcementBanner: String(announcementBanner).trim(),
@@ -65,7 +69,7 @@ const updateSiteConfig = async (req, res) => {
       updatedAt: updateDoc.updatedAt,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return safeServerError(res, 'siteConfigController.updateSiteConfig', error);
   }
 };
 

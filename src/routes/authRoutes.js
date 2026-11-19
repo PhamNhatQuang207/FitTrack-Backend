@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { check } = require('express-validator');
 const validate = require('../middleware/validate');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, tokenLimiter } = require('../middleware/rateLimiter');
+const { verifyCookieCsrfOrigin } = require('../utils/security');
 const { register, login, googleLogin, refresh, logout, verifyEmail, requestPasswordReset, resetPassword } = require('../controllers/authController');
 
 /**
@@ -184,7 +185,7 @@ router.post('/login',
  *                   type: string
  *                   example: Invalid or expired verification token
  */
-router.get('/verify-email/:token', verifyEmail);
+router.get('/verify-email/:token', authLimiter, verifyEmail);
 
 /**
  * @swagger
@@ -302,7 +303,7 @@ router.post('/google',
  *       401:
  *         description: Missing, invalid, or expired refresh token
  */
-router.post('/refresh', refresh);
+router.post('/refresh', tokenLimiter, verifyCookieCsrfOrigin, refresh);
 
 /**
  * @swagger
@@ -314,6 +315,6 @@ router.post('/refresh', refresh);
  *       200:
  *         description: Logged out successfully
  */
-router.post('/logout', logout);
+router.post('/logout', tokenLimiter, verifyCookieCsrfOrigin, logout);
 
 module.exports = router;

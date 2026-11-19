@@ -1,11 +1,15 @@
 const { getDb } = require('../config/db');
 const { ObjectId } = require('mongodb');
+const { safeServerError } = require('../utils/security');
 
 const ALLOWED_LANGUAGES = ['en', 'vi'];
 
 const getProgress = async (req, res) => {
     try {
         const userId = req.userId;
+        if (!ObjectId.isValid(userId)) {
+            return res.status(401).json({ message: 'Invalid or expired token' });
+        }
         const db = getDb();
 
         // Find user and return only specific fields
@@ -30,12 +34,15 @@ const getProgress = async (req, res) => {
 
         res.json(user);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'userController.getProgress', error);
     }
 };
 
 const updateLanguage = async (req, res) => {
     try {
+        if (!ObjectId.isValid(req.userId)) {
+            return res.status(401).json({ code: 'AUTH_UNAUTHORIZED', message: 'Invalid or expired token' });
+        }
         const { preferredLanguage } = req.body || {};
         if (!ALLOWED_LANGUAGES.includes(preferredLanguage)) {
             return res.status(400).json({
@@ -53,7 +60,10 @@ const updateLanguage = async (req, res) => {
         }
         res.json({ preferredLanguage });
     } catch (error) {
-        res.status(500).json({ code: 'INTERNAL_ERROR', message: error.message });
+        return safeServerError(res, 'userController.updateLanguage', error, {
+            includeCode: true,
+            code: 'INTERNAL_ERROR',
+        });
     }
 };
 

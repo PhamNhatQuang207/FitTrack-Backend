@@ -23,6 +23,7 @@ const aiRoutes = require('./routes/aiRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const { getPublicMuscleGroups } = require('./controllers/muscleGroupController');
 const { getPublicSiteConfig } = require('./controllers/siteConfigController');
+const { ALLOWED_ORIGINS } = require('./utils/security');
 dotenv.config();
 const app = express();
 
@@ -31,13 +32,7 @@ app.set('trust proxy', 1);
 
 // CORS configuration - allow requests from frontend
 app.use(cors({
-  origin: [
-    'http://localhost:3000',  // Local development (Create React App)
-    'http://localhost:8081',  // Local development (Expo Web)
-    'https://gym-tracking-123.vercel.app',  // Old Vercel domain — drop once the cutover is verified
-    'https://fittrack.io.vn',  // Production frontend (apex)
-    'https://www.fittrack.io.vn'  // Production frontend (www redirects to apex)
-  ],
+  origin: ALLOWED_ORIGINS,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept', 'Accept-Language', 'X-Mcp-Api-Key', 'X-Client-Type']
@@ -57,11 +52,11 @@ app.use(helmet({
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.use('/api', limiter); // Apply global rate limit to API routes
 
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 app.use(localeMiddleware);
 
-// MCP HTTP transport (Streamable HTTP)
-app.all('/mcp', mcpAuthMiddleware, mcpLimiter, mcpHttpHandler);
+// MCP HTTP transport (Streamable HTTP) — rate limit before auth & DB lookup
+app.all('/mcp', mcpLimiter, mcpAuthMiddleware, mcpHttpHandler);
 
 // Health check endpoint for Render
 app.get('/api/health', (req, res) => {
@@ -72,11 +67,13 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'FitTrack API Documentation'
-}));
+// Swagger API Documentation (disabled in production unless ENABLE_SWAGGER=true)
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'FitTrack API Documentation'
+  }));
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -90,6 +87,18 @@ app.use('/api/ai', aiRoutes);
 app.get('/api/muscle-groups', getPublicMuscleGroups);
 app.get('/api/site-config', getPublicSiteConfig);
 app.use('/api/admin', adminRoutes);
+
+// Global JSON error handler (malformed JSON, oversized payload, unexpected errors)
+app.use((err, _req, res, _next) => {
+  if (err?.type === 'entity.parse.failed' || (err instanceof SyntaxError && err.status === 400)) {
+    return res.status(400).json({ code: 'INVALID_JSON', message: 'Malformed JSON request body' });
+  }
+  if (err?.type === 'entity.too.large' || err?.status === 413) {
+    return res.status(413).json({ code: 'PAYLOAD_TOO_LARGE', message: 'Request body too large' });
+  }
+  console.error('[ExpressError]', err);
+  return res.status(500).json({ code: 'SERVER_ERROR', message: 'Internal server error' });
+});
 const startServer = async () => {
   await connectDB();
   const PORT = process.env.PORT || 5000;

@@ -1,11 +1,12 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const { safeServerError } = require('../utils/security');
 
 const safeEqual = (a, b) => {
-    const bufA = Buffer.from(String(a || ''));
-    const bufB = Buffer.from(String(b || ''));
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
+    if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+    const hashA = crypto.createHash('sha256').update(a).digest();
+    const hashB = crypto.createHash('sha256').update(b).digest();
+    return crypto.timingSafeEqual(hashA, hashB);
 };
 
 const adminLogin = async (req, res) => {
@@ -28,7 +29,7 @@ const adminLogin = async (req, res) => {
         const token = jwt.sign(
             { isAdmin: true, username: expectedUser },
             process.env.JWT_SECRET,
-            { expiresIn: '12h' }
+            { algorithm: 'HS256', expiresIn: '12h' }
         );
 
         res.json({
@@ -37,7 +38,7 @@ const adminLogin = async (req, res) => {
             username: expectedUser,
         });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return safeServerError(res, 'adminAuthController.adminLogin', error);
     }
 };
 

@@ -12,10 +12,10 @@ const authMiddleware = (req, res, next) => {
 
         const token = authHeader.split(' ')[1];
 
-        // Verify token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // Verify token with pinned symmetric algorithm
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
-        if (!decoded || !decoded.userId) {
+        if (!decoded || typeof decoded.userId !== 'string' || decoded.userId.length === 0) {
             return res.status(401).json({ message: 'Invalid or expired token' });
         }
 

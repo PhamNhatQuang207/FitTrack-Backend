@@ -36,9 +36,10 @@ describe('rateLimiter (unit) — fail-closed behaviour', () => {
     expect(isDevelopment).toBe(true);
   });
 
-  test('exports limiter and authLimiter as middleware functions', () => {
-    const { limiter, authLimiter } = loadWithEnv('production');
+  test('exports limiter, authLimiter, and feedbackLimiter as middleware functions', () => {
+    const { limiter, authLimiter, feedbackLimiter } = loadWithEnv('production');
     expect(typeof limiter).toBe('function');
     expect(typeof authLimiter).toBe('function');
+    expect(typeof feedbackLimiter).toBe('function');
   });
 });

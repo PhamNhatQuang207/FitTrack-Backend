@@ -37,6 +37,7 @@ body.ft-page {
 .w-full { width: 100%; }
 .mt-3 { margin-top: 0.85rem; }
 .text-right { text-align: right !important; }
+.text-center { text-align: center !important; }
 .bg-blob { display: none; }
 
 /* Typography */
@@ -105,9 +106,11 @@ body.ft-page {
 }
 
 /* Badges */
-.badge-lime, .badge-orange, .badge-gray {
+.badge-lime, .badge-orange, .badge-gray, .badge-blue {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  white-space: nowrap;
   padding: 2px 10px;
   font-size: 0.72rem;
   font-weight: 600;
@@ -123,6 +126,11 @@ body.ft-page {
   background: #ffedd5;
   color: #9a3412;
   border: 1px solid #fed7aa;
+}
+.badge-blue {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
 }
 .badge-gray {
   background: var(--bg-subtle);
@@ -436,7 +444,7 @@ body.ft-page {
 /* Table */
 .table-card {
   padding: 0;
-  overflow: hidden;
+  overflow-x: auto;
 }
 .ft-table {
   width: 100%;
@@ -472,6 +480,7 @@ body.ft-page {
 }
 .row-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
 }
@@ -605,4 +614,51 @@ body.ft-page {
   background: var(--brand-lime-bg);
   color: #3f6212;
   font-weight: 600;
+}
+
+/* Feedbacks Panel */
+.filter-controls {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filter-controls .ft-select-wrap {
+  min-width: 170px;
+  width: auto;
+}
+.feedback-user-name {
+  display: block;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.feedback-user-email {
+  font-size: 0.75rem;
+  margin: 0;
+}
+.feedback-content {
+  max-width: 340px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.feedback-status-sel {
+  width: auto;
+  min-width: 110px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+}
+.delete-feedback-btn {
+  color: var(--brand-orange);
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.delete-feedback-btn:hover {
+  border-color: var(--brand-orange);
+  color: #c2410c;
 }

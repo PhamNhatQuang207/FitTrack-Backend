@@ -30,6 +30,18 @@ const apiFetch = async (url, options = {}) => {
   return data;
 };
 
+const updateFeedbackStats = () => {
+  const total = feedbacksCache.length;
+  const pending = feedbacksCache.filter((f) => f.status === 'pending').length;
+  const totalEl = $('stat-total-feedbacks');
+  const pendingEl = $('stat-pending-feedbacks');
+  if (totalEl) totalEl.textContent = total;
+  if (pendingEl) {
+    pendingEl.textContent = `${pending} PENDING`;
+    pendingEl.className = pending > 0 ? 'badge-orange' : 'badge-lime';
+  }
+};
+
 const updateKpiStats = () => {
   const totalEx = exercisesCache.length;
   const activeEx = exercisesCache.filter((e) => e.isActive !== false).length;
@@ -40,6 +52,8 @@ const updateKpiStats = () => {
   const activeGrp = groupsCache.filter((g) => g.isActive !== false).length;
   $('stat-total-groups').textContent = totalGrp;
   $('stat-active-groups').textContent = `${activeGrp} ENABLED`;
+
+  updateFeedbackStats();
 };
 
 const showDashboard = async () => {
@@ -132,10 +146,12 @@ const renderGroups = () => {
       <td class="ex-name-cell"></td>
       <td><span class="mono-meta"></span></td>
       <td><span class="mono-meta">${count} EXERCISES</span></td>
-      <td><span class="${g.isActive ? 'badge-lime' : 'badge-orange'}">${g.isActive ? 'ACTIVE' : 'HIDDEN'}</span></td>
-      <td class="row-actions">
-        <button type="button" class="ft-btn-secondary btn-sm edit-grp">Rename / Edit</button>
-        <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
+      <td class="text-center"><span class="${g.isActive ? 'badge-lime' : 'badge-orange'}">${g.isActive ? 'ACTIVE' : 'HIDDEN'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="ft-btn-secondary btn-sm edit-grp">Rename / Edit</button>
+          <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
+        </div>
       </td>
     `;
     appendNameWithViBadge(tr.children[0], g.name, hasVi);
@@ -196,12 +212,14 @@ const renderExercises = () => {
     const hasVi = Boolean(ex.translations?.vi?.name?.trim());
     tr.innerHTML = `
       <td class="ex-name-cell"></td>
-      <td><span class="badge-gray"></span></td>
+      <td class="text-center"><span class="badge-gray"></span></td>
       <td class="mono-meta"></td>
-      <td><span class="${active ? 'badge-lime' : 'badge-orange'}">${active ? 'ACTIVE' : 'HIDDEN'}</span></td>
-      <td class="row-actions">
-        <button type="button" class="ft-btn-secondary btn-sm edit-btn">Edit</button>
-        <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
+      <td class="text-center"><span class="${active ? 'badge-lime' : 'badge-orange'}">${active ? 'ACTIVE' : 'HIDDEN'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="ft-btn-secondary btn-sm edit-btn">Edit</button>
+          <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
+        </div>
       </td>
     `;
     appendNameWithViBadge(tr.children[0], ex.name, hasVi);
@@ -423,56 +441,87 @@ $('config-form').addEventListener('submit', async (e) => {
   updatePreview();
 });
 
-const updateFeedbackStats = () => {
-  const total = feedbacksCache.length;
-  const pending = feedbacksCache.filter((f) => f.status === 'pending').length;
-  const totalEl = $('stat-total-feedbacks');
-  const pendingEl = $('stat-pending-feedbacks');
-  if (totalEl) totalEl.textContent = total;
-  if (pendingEl) pendingEl.textContent = `${pending} PENDING`;
-};
-
 const renderFeedbacks = () => {
   const tbody = $('feedbacks-tbody');
   if (!tbody) return;
+  const statusFilter = $('feedback-status-filter')?.value || '';
+  const sourceFilter = $('feedback-source-filter')?.value || '';
+  const filtered = feedbacksCache.filter((item) => {
+    if (statusFilter && item.status !== statusFilter) return false;
+    if (sourceFilter && (item.source || 'web') !== sourceFilter) return false;
+    return true;
+  });
+
   tbody.innerHTML = '';
-  if (feedbacksCache.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="muted text-center" style="padding: 2rem;">No feedbacks found.</td></tr>';
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted text-center" style="padding: 2rem;">No feedbacks found.</td></tr>';
     return;
   }
-  feedbacksCache.forEach((item) => {
+
+  const statusBadgeMap = {
+    resolved: 'badge-lime',
+    reviewed: 'badge-blue',
+    pending: 'badge-orange',
+  };
+
+  filtered.forEach((item) => {
     const tr = document.createElement('tr');
     const createdDate = item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A';
-    const statusBadgeClass = item.status === 'resolved' ? 'badge-lime' : item.status === 'reviewed' ? 'badge-orange' : 'badge-orange';
+    const currentStatus = item.status || 'pending';
+    const statusBadgeClass = statusBadgeMap[currentStatus] || 'badge-orange';
+    const itemSource = (item.source || 'web').toLowerCase();
 
     tr.innerHTML = `
-      <td class="mono-meta" style="font-size: 0.75rem;"></td>
+      <td class="mono-meta"></td>
       <td>
-        <strong class="feedback-user-name" style="display: block; color: #fff;"></strong>
-        <span class="muted feedback-user-email" style="font-size: 0.75rem;"></span>
+        <strong class="feedback-user-name"></strong>
+        <span class="muted feedback-user-email"></span>
       </td>
+      <td class="text-center">
+        <span class="feedback-source-badge"></span>
+      </td>
+      <td class="text-center">
+        <span class="badge-gray feedback-screen-badge"></span>
+      </td>
+      <td class="feedback-content"></td>
+      <td class="text-center"><span class="feedback-status-badge"></span></td>
       <td>
-        <span class="mono-meta" style="color: #CCFF00; background: rgba(204,255,0,0.1); padding: 2px 6px; border-radius: 2px;"></span>
-      </td>
-      <td class="feedback-content" style="max-width: 320px; white-space: pre-wrap; word-break: break-word;"></td>
-      <td><span class="${statusBadgeClass}">${(item.status || 'pending').toUpperCase()}</span></td>
-      <td class="row-actions" style="text-align: right;">
-        <select class="ft-input feedback-status-sel" data-id="${item.id}" style="width: auto; padding: 2px 6px; font-size: 0.75rem; display: inline-block;">
-          <option value="pending" ${item.status === 'pending' ? 'selected' : ''}>Pending</option>
-          <option value="reviewed" ${item.status === 'reviewed' ? 'selected' : ''}>Reviewed</option>
-          <option value="resolved" ${item.status === 'resolved' ? 'selected' : ''}>Resolved</option>
-        </select>
-        <button type="button" class="ft-btn-ghost btn-sm delete-feedback-btn" data-id="${item.id}" style="color: #FF5C00; padding: 2px 8px;">✕</button>
+        <div class="row-actions">
+          <select class="ft-input feedback-status-sel">
+            <option value="pending">Pending</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <button type="button" class="ft-btn-ghost btn-sm delete-feedback-btn" aria-label="Delete feedback">✕</button>
+        </div>
       </td>
     `;
     tr.children[0].textContent = createdDate;
     tr.querySelector('.feedback-user-name').textContent = item.userName || 'Anonymous';
     tr.querySelector('.feedback-user-email').textContent = item.userEmail || '';
-    tr.children[2].children[0].textContent = item.screen || 'General';
+
+    const sourceBadgeEl = tr.querySelector('.feedback-source-badge');
+    sourceBadgeEl.className = `feedback-source-badge ${itemSource === 'mobile' ? 'badge-blue' : 'badge-gray'}`;
+    sourceBadgeEl.textContent = itemSource.toUpperCase();
+
+    tr.querySelector('.feedback-screen-badge').textContent = item.screen || 'General';
     tr.querySelector('.feedback-content').textContent = item.content || '';
 
-    tr.querySelector('.feedback-status-sel').addEventListener('change', async (e) => {
+    const badgeEl = tr.querySelector('.feedback-status-badge');
+    badgeEl.className = `feedback-status-badge ${statusBadgeClass}`;
+    badgeEl.textContent = currentStatus.toUpperCase();
+
+    const selectEl = tr.querySelector('.feedback-status-sel');
+    selectEl.value = currentStatus;
+    selectEl.dataset.id = item.id;
+
+    const deleteBtn = tr.querySelector('.delete-feedback-btn');
+    deleteBtn.dataset.id = item.id;
+
+    selectEl.addEventListener('change', async (e) => {
+      const prevStatus = currentStatus;
       const newStatus = e.target.value;
+      selectEl.disabled = true;
       try {
         await apiFetch(`/api/admin/feedbacks/${item.id}/status`, {
           method: 'PATCH',
@@ -481,11 +530,14 @@ const renderFeedbacks = () => {
         showToast(`Feedback status updated to ${newStatus}`);
         await loadFeedbacks();
       } catch (err) {
+        selectEl.value = prevStatus;
         showToast(err.message);
+      } finally {
+        if (selectEl.isConnected) selectEl.disabled = false;
       }
     });
 
-    tr.querySelector('.delete-feedback-btn').addEventListener('click', async () => {
+    deleteBtn.addEventListener('click', async () => {
       if (!confirm('Are you sure you want to delete this feedback?')) return;
       try {
         await apiFetch(`/api/admin/feedbacks/${item.id}`, { method: 'DELETE' });
@@ -501,10 +553,7 @@ const renderFeedbacks = () => {
 };
 
 const loadFeedbacks = async () => {
-  const filterEl = $('feedback-status-filter');
-  const status = filterEl ? filterEl.value : '';
-  const url = status ? `/api/admin/feedbacks?status=${encodeURIComponent(status)}` : '/api/admin/feedbacks';
-  feedbacksCache = await apiFetch(url);
+  feedbacksCache = await apiFetch('/api/admin/feedbacks');
   renderFeedbacks();
   updateFeedbackStats();
 };
@@ -515,7 +564,7 @@ const switchTab = (activeTabId, activePanelId) => {
   $(activeTabId).classList.add('active');
   $(activePanelId).classList.remove('hidden');
   if (activeTabId === 'tab-feedbacks') {
-    loadFeedbacks();
+    loadFeedbacks().catch((err) => showToast(err.message));
   }
 };
 
@@ -523,10 +572,15 @@ $('tab-exercises').addEventListener('click', () => switchTab('tab-exercises', 'p
 $('tab-groups').addEventListener('click', () => switchTab('tab-groups', 'panel-groups'));
 $('tab-config').addEventListener('click', () => switchTab('tab-config', 'panel-config'));
 $('tab-feedbacks').addEventListener('click', () => switchTab('tab-feedbacks', 'panel-feedbacks'));
-$('feedback-status-filter').addEventListener('change', loadFeedbacks);
-$('refresh-feedbacks-btn').addEventListener('click', () => {
-  loadFeedbacks();
-  showToast('Feedbacks refreshed');
+$('feedback-status-filter').addEventListener('change', renderFeedbacks);
+$('feedback-source-filter').addEventListener('change', renderFeedbacks);
+$('refresh-feedbacks-btn').addEventListener('click', async () => {
+  try {
+    await loadFeedbacks();
+    showToast('Feedbacks refreshed');
+  } catch (err) {
+    showToast(err.message);
+  }
 });
 
 const customSelectSyncers = [];
@@ -607,7 +661,7 @@ const enhanceSelect = (selectEl) => {
 };
 
 document.addEventListener('click', () => closeAllSelectMenus());
-['ex-category', 'ex-difficulty', 'exercise-category-filter', 'exercise-status-filter', 'merge-source', 'merge-target']
+['ex-category', 'ex-difficulty', 'exercise-category-filter', 'exercise-status-filter', 'merge-source', 'merge-target', 'feedback-status-filter', 'feedback-source-filter']
   .forEach((id) => enhanceSelect($(id)));
 
 if (sessionStorage.getItem(TOKEN_KEY)) {

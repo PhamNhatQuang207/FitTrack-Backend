@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/authMiddleware');
+const { feedbackLimiter } = require('../middleware/rateLimiter');
 const { submitFeedback } = require('../controllers/feedbackController');
 
 /**
@@ -27,6 +28,11 @@ const { submitFeedback } = require('../controllers/feedbackController');
  *               content:
  *                 type: string
  *                 example: Giao diện rất mượt nhưng cần thêm nút lọc theo ngày.
+ *               source:
+ *                 type: string
+ *                 enum: [web, mobile]
+ *                 description: Optional client source; defaults automatically from X-Client-Type header ('mobile' when X-Client-Type is mobile, otherwise 'web').
+ *                 example: web
  *     responses:
  *       201:
  *         description: Feedback submitted successfully
@@ -34,7 +40,9 @@ const { submitFeedback } = require('../controllers/feedbackController');
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       429:
+ *         description: Too many feedback requests
  */
-router.post('/', protect, submitFeedback);
+router.post('/', feedbackLimiter, protect, submitFeedback);
 
 module.exports = router;

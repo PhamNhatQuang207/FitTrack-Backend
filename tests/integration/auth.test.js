@@ -20,6 +20,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await clearDb();
+  sendEmailSmart.mockClear();
 });
 
 const seedUser = async (overrides = {}) => {
@@ -66,7 +67,7 @@ describe('POST /api/auth/register', () => {
     expect(dupe.body).toEqual(fresh.body);
   });
 
-  test('SECURITY: registering over a verified account does not touch it', async () => {
+  test('SECURITY: registering over a verified account does not touch it and emails owner notice', async () => {
     await seedUser({ email: 'owner@test.com', name: 'Owner' });
     sendEmailSmart.mockClear();
 
@@ -77,7 +78,54 @@ describe('POST /api/auth/register', () => {
     const user = await db.collection('users').findOne({ email: 'owner@test.com' });
     expect(user.name).toBe('Owner');
     expect(await bcrypt.compare('password123', user.password)).toBe(true);
-    expect(sendEmailSmart).not.toHaveBeenCalled();
+    expect(user.verificationToken).toBeUndefined();
+
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const payload = sendEmailSmart.mock.calls[0][0];
+    expect(payload.to).toBe('owner@test.com');
+    expect(payload.html).toContain('Owner');
+    expect(payload.html).not.toContain('Attacker');
+    expect(payload.text).not.toContain('Attacker');
+    expect(payload.html).toContain('/login');
+    expect(payload.html).not.toContain('token=');
+    expect(payload.text).not.toContain('token=');
+  });
+
+  test('SECURITY: registering over a verified Google-only account returns 201, leaves DB untouched, and sends Google notice', async () => {
+    await db.collection('users').insertOne({
+      email: 'gowner@test.com',
+      name: 'Google Owner',
+      googleId: 'google-sub-123',
+      authProvider: 'google',
+      isVerified: true,
+      createdAt: new Date(),
+    });
+    sendEmailSmart.mockClear();
+
+    const freshRes = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Fresh', email: 'fresh-compare@test.com', password: 'password123' });
+
+    sendEmailSmart.mockClear();
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Attacker', email: 'gowner@test.com', password: 'password123' });
+
+    expect(res.status).toBe(freshRes.status);
+    expect(res.body).toEqual(freshRes.body);
+
+    const user = await db.collection('users').findOne({ email: 'gowner@test.com' });
+    expect(user.name).toBe('Google Owner');
+    expect(user.password).toBeUndefined();
+
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const payload = sendEmailSmart.mock.calls[0][0];
+    expect(payload.to).toBe('gowner@test.com');
+    expect(payload.html).toMatch(/Google/i);
+    expect(payload.html).toContain('/login');
+    expect(payload.html).not.toContain('/reset-password');
+    expect(payload.html).not.toContain('token=');
+    expect(payload.text).not.toContain('token=');
   });
 
   test('re-registering an unverified account issues a fresh token and email', async () => {
@@ -256,11 +304,44 @@ describe('POST /api/auth/request-password-reset (SECURITY FIX #3)', () => {
   });
 
   test('does not reveal whether an account exists (no enumeration)', async () => {
+    sendEmailSmart.mockClear();
     const res = await request(app)
       .post('/api/auth/request-password-reset')
       .send({ email: 'ghost@test.com' });
     expect(res.status).toBe(200);
     expect(res.body.message).toMatch(/if an account exists/i);
+    expect(sendEmailSmart).not.toHaveBeenCalled();
+  });
+
+  test('sends Google sign-in notice when resetting a Google-only account without storing a token', async () => {
+    await db.collection('users').insertOne({
+      email: 'greset@test.com',
+      name: 'Google Reset User',
+      googleId: 'g-reset-1',
+      authProvider: 'google',
+      isVerified: true,
+      createdAt: new Date(),
+    });
+    sendEmailSmart.mockClear();
+
+    const res = await request(app)
+      .post('/api/auth/request-password-reset')
+      .send({ email: 'greset@test.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/if an account exists/i);
+
+    const user = await db.collection('users').findOne({ email: 'greset@test.com' });
+    expect(user.resetPasswordToken).toBeUndefined();
+    expect(user.resetPasswordExpiry).toBeUndefined();
+
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const payload = sendEmailSmart.mock.calls[0][0];
+    expect(payload.to).toBe('greset@test.com');
+    expect(payload.html).toMatch(/Google/i);
+    expect(payload.html).toContain('/login');
+    expect(payload.html).not.toContain('token=');
+    expect(payload.text).not.toContain('token=');
   });
 
   test('SECURITY: blocks NoSQL operator injection in the email field', async () => {

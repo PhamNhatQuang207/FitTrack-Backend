@@ -25,6 +25,7 @@ const sendEmail = async (options) => {
             to: options.to,
             subject: options.subject,
             html: options.html,
+            ...(options.text ? { text: options.text } : {}),
         });
         
         // Check if result is valid

@@ -93,7 +93,8 @@ describe('E2E Flow 1: Complete Web Authentication & Account Lifecycle', () => {
     const reuseVerifyRes = await request(app).get(`/api/auth/verify-email/${rawVerifyToken}`);
     expect(reuseVerifyRes.status).toBe(400);
 
-    // 4. Duplicate registration over verified account (exact & different case) is indistinguishable and harmless
+    // 4. Duplicate registration over verified account (exact & different case) is indistinguishable,
+    // leaves DB untouched, and emails owner notice in their preferred language without any token
     sendEmailSmart.mockClear();
     const dupeRes = await request(app)
       .post('/api/auth/register')
@@ -104,7 +105,14 @@ describe('E2E Flow 1: Complete Web Authentication & Account Lifecycle', () => {
       });
     expect(dupeRes.status).toBe(201);
     expect(dupeRes.body).toEqual(regRes.body);
-    expect(sendEmailSmart).not.toHaveBeenCalled();
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const dupeNotice = sendEmailSmart.mock.calls[0][0];
+    expect(dupeNotice.to).toBe('quang.e2e@example.com');
+    expect(dupeNotice.subject).toMatch(/tồn tại/i);
+    expect(dupeNotice.html).toContain('/login');
+    expect(dupeNotice.html).not.toContain('Attacker Name');
+    expect(dupeNotice.html).not.toContain('token=');
+    expect(dupeNotice.text).not.toContain('token=');
 
     const verifiedUser = await db.collection('users').findOne({ email: 'quang.e2e@example.com' });
     expect(await bcrypt.compare('StrongPassword1!', verifiedUser.password)).toBe(true);

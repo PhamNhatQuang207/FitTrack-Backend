@@ -80,6 +80,9 @@
           <button id="tab-config" class="nav-tab" type="button">
             <span class="tab-index">03</span> Site Content
           </button>
+          <button id="tab-feedbacks" class="nav-tab" type="button">
+            <span class="tab-index">04</span> User Feedbacks
+          </button>
         </nav>
 
         <div class="header-right">
@@ -110,6 +113,13 @@
           <div class="stat-value-row">
             <span id="stat-bg-mode" class="ft-stat-number stat-sm">DEFAULT</span>
             <span class="badge-orange" id="stat-banner-mode">NO BANNER</span>
+          </div>
+        </div>
+        <div class="ft-card stat-card">
+          <span class="ft-label">User Feedbacks</span>
+          <div class="stat-value-row">
+            <span id="stat-total-feedbacks" class="ft-stat-number">0</span>
+            <span class="badge-lime" id="stat-pending-feedbacks">0 PENDING</span>
           </div>
         </div>
       </section>
@@ -210,9 +220,9 @@
             <thead>
               <tr>
                 <th>Exercise Name</th>
-                <th>Muscle Group</th>
+                <th class="text-center">Muscle Group</th>
                 <th>Equipment</th>
-                <th>Status</th>
+                <th class="text-center">Status</th>
                 <th class="text-right">Actions</th>
               </tr>
             </thead>
@@ -288,7 +298,7 @@
                 <th>Muscle Group</th>
                 <th>API Slug</th>
                 <th>Exercises Count</th>
-                <th>Status</th>
+                <th class="text-center">Status</th>
                 <th class="text-right">Actions</th>
               </tr>
             </thead>
@@ -346,6 +356,51 @@
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: USER FEEDBACKS -->
+      <section id="panel-feedbacks" class="panel hidden animate-slide-up">
+        <div class="section-header">
+          <div>
+            <h2 class="ft-title section-title">User Feedbacks</h2>
+            <p class="muted">Feedback from athletes across application screens</p>
+          </div>
+          <div class="filter-controls">
+            <select id="feedback-status-filter" class="ft-input">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <select id="feedback-source-filter" class="ft-input">
+              <option value="">All Sources</option>
+              <option value="web">Web</option>
+              <option value="mobile">Mobile</option>
+            </select>
+            <button id="refresh-feedbacks-btn" class="ft-btn-ghost" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="ft-card table-card">
+          <table class="ft-table">
+            <thead>
+              <tr>
+                <th style="width: 140px;">Time</th>
+                <th style="width: 180px;">User</th>
+                <th class="text-center" style="width: 100px;">Source</th>
+                <th class="text-center" style="width: 160px;">Screen</th>
+                <th>Feedback Message</th>
+                <th class="text-center" style="width: 130px;">Status</th>
+                <th class="text-right" style="width: 180px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="feedbacks-tbody">
+              <tr>
+                <td colspan="7" class="muted text-center" style="padding: 2rem;">Loading feedbacks...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </main>

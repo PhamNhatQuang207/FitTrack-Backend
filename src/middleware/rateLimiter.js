@@ -59,5 +59,17 @@ const mcpLimiter = rateLimit({
     skip: (req) => isDevelopment
 });
 
+const feedbackLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: isDevelopment ? 10000 : 15,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        code: 'RATE_LIMIT_EXCEEDED',
+        message: 'Too many feedback submissions from this IP, please try again later'
+    },
+    skip: () => isDevelopment
+});
+
 // isDevelopment exported for unit testing of the fail-closed behaviour.
-module.exports = { limiter, authLimiter, tokenLimiter, aiChatLimiter, mcpLimiter, isDevelopment };
+module.exports = { limiter, authLimiter, tokenLimiter, aiChatLimiter, mcpLimiter, feedbackLimiter, isDevelopment };

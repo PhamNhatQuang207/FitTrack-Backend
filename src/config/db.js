@@ -12,6 +12,9 @@ const ensureIndexes = async (database) => {
       database.collection('refresh-tokens').createIndex({ tokenHash: 1 }, { unique: true }),
       database.collection('refresh-tokens').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       database.collection('users').createIndex({ mcpApiKeyHash: 1 }, { sparse: true }),
+      database.collection('feedbacks').createIndex({ status: 1, createdAt: -1 }),
+      database.collection('feedbacks').createIndex({ source: 1, createdAt: -1 }),
+      database.collection('feedbacks').createIndex({ createdAt: -1 }),
     ]);
   } catch (err) {
     console.warn('⚠️ Failed to ensure MongoDB indexes:', err.message);

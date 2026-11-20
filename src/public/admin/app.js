@@ -2,6 +2,7 @@ const TOKEN_KEY = 'fittrack_admin_token';
 const USER_KEY = 'fittrack_admin_username';
 let exercisesCache = [];
 let groupsCache = [];
+let feedbacksCache = [];
 let toastTimer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +30,18 @@ const apiFetch = async (url, options = {}) => {
   return data;
 };
 
+const updateFeedbackStats = () => {
+  const total = feedbacksCache.length;
+  const pending = feedbacksCache.filter((f) => f.status === 'pending').length;
+  const totalEl = $('stat-total-feedbacks');
+  const pendingEl = $('stat-pending-feedbacks');
+  if (totalEl) totalEl.textContent = total;
+  if (pendingEl) {
+    pendingEl.textContent = `${pending} PENDING`;
+    pendingEl.className = pending > 0 ? 'badge-orange' : 'badge-lime';
+  }
+};
+
 const updateKpiStats = () => {
   const totalEx = exercisesCache.length;
   const activeEx = exercisesCache.filter((e) => e.isActive !== false).length;
@@ -39,13 +52,15 @@ const updateKpiStats = () => {
   const activeGrp = groupsCache.filter((g) => g.isActive !== false).length;
   $('stat-total-groups').textContent = totalGrp;
   $('stat-active-groups').textContent = `${activeGrp} ENABLED`;
+
+  updateFeedbackStats();
 };
 
 const showDashboard = async () => {
   $('login-view').classList.add('hidden');
   $('dashboard-view').classList.remove('hidden');
   $('admin-username-label').textContent = sessionStorage.getItem(USER_KEY) || 'ADMIN';
-  await Promise.all([loadGroups(), loadExercises(), loadSiteConfig()]);
+  await Promise.all([loadGroups(), loadExercises(), loadSiteConfig(), loadFeedbacks()]);
   updateKpiStats();
 };
 
@@ -131,10 +146,12 @@ const renderGroups = () => {
       <td class="ex-name-cell"></td>
       <td><span class="mono-meta"></span></td>
       <td><span class="mono-meta">${count} EXERCISES</span></td>
-      <td><span class="${g.isActive ? 'badge-lime' : 'badge-orange'}">${g.isActive ? 'ACTIVE' : 'HIDDEN'}</span></td>
-      <td class="row-actions">
-        <button type="button" class="ft-btn-secondary btn-sm edit-grp">Rename / Edit</button>
-        <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
+      <td class="text-center"><span class="${g.isActive ? 'badge-lime' : 'badge-orange'}">${g.isActive ? 'ACTIVE' : 'HIDDEN'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="ft-btn-secondary btn-sm edit-grp">Rename / Edit</button>
+          <button type="button" class="ft-btn-ghost btn-sm toggle-grp">${g.isActive ? 'Hide' : 'Restore'}</button>
+        </div>
       </td>
     `;
     appendNameWithViBadge(tr.children[0], g.name, hasVi);
@@ -195,12 +212,14 @@ const renderExercises = () => {
     const hasVi = Boolean(ex.translations?.vi?.name?.trim());
     tr.innerHTML = `
       <td class="ex-name-cell"></td>
-      <td><span class="badge-gray"></span></td>
+      <td class="text-center"><span class="badge-gray"></span></td>
       <td class="mono-meta"></td>
-      <td><span class="${active ? 'badge-lime' : 'badge-orange'}">${active ? 'ACTIVE' : 'HIDDEN'}</span></td>
-      <td class="row-actions">
-        <button type="button" class="ft-btn-secondary btn-sm edit-btn">Edit</button>
-        <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
+      <td class="text-center"><span class="${active ? 'badge-lime' : 'badge-orange'}">${active ? 'ACTIVE' : 'HIDDEN'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="ft-btn-secondary btn-sm edit-btn">Edit</button>
+          <button type="button" class="ft-btn-ghost btn-sm toggle-btn">${active ? 'Hide' : 'Restore'}</button>
+        </div>
       </td>
     `;
     appendNameWithViBadge(tr.children[0], ex.name, hasVi);
@@ -422,16 +441,147 @@ $('config-form').addEventListener('submit', async (e) => {
   updatePreview();
 });
 
+const renderFeedbacks = () => {
+  const tbody = $('feedbacks-tbody');
+  if (!tbody) return;
+  const statusFilter = $('feedback-status-filter')?.value || '';
+  const sourceFilter = $('feedback-source-filter')?.value || '';
+  const filtered = feedbacksCache.filter((item) => {
+    if (statusFilter && item.status !== statusFilter) return false;
+    if (sourceFilter && (item.source || 'web') !== sourceFilter) return false;
+    return true;
+  });
+
+  tbody.innerHTML = '';
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted text-center" style="padding: 2rem;">No feedbacks found.</td></tr>';
+    return;
+  }
+
+  const statusBadgeMap = {
+    resolved: 'badge-lime',
+    reviewed: 'badge-blue',
+    pending: 'badge-orange',
+  };
+
+  filtered.forEach((item) => {
+    const tr = document.createElement('tr');
+    const createdDate = item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A';
+    const currentStatus = item.status || 'pending';
+    const statusBadgeClass = statusBadgeMap[currentStatus] || 'badge-orange';
+    const itemSource = (item.source || 'web').toLowerCase();
+
+    tr.innerHTML = `
+      <td class="mono-meta"></td>
+      <td>
+        <strong class="feedback-user-name"></strong>
+        <span class="muted feedback-user-email"></span>
+      </td>
+      <td class="text-center">
+        <span class="feedback-source-badge"></span>
+      </td>
+      <td class="text-center">
+        <span class="badge-gray feedback-screen-badge"></span>
+      </td>
+      <td class="feedback-content"></td>
+      <td class="text-center"><span class="feedback-status-badge"></span></td>
+      <td>
+        <div class="row-actions">
+          <select class="ft-input feedback-status-sel">
+            <option value="pending">Pending</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="resolved">Resolved</option>
+          </select>
+          <button type="button" class="ft-btn-ghost btn-sm delete-feedback-btn" aria-label="Delete feedback">✕</button>
+        </div>
+      </td>
+    `;
+    tr.children[0].textContent = createdDate;
+    tr.querySelector('.feedback-user-name').textContent = item.userName || 'Anonymous';
+    tr.querySelector('.feedback-user-email').textContent = item.userEmail || '';
+
+    const sourceBadgeEl = tr.querySelector('.feedback-source-badge');
+    sourceBadgeEl.className = `feedback-source-badge ${itemSource === 'mobile' ? 'badge-blue' : 'badge-gray'}`;
+    sourceBadgeEl.textContent = itemSource.toUpperCase();
+
+    tr.querySelector('.feedback-screen-badge').textContent = item.screen || 'General';
+    tr.querySelector('.feedback-content').textContent = item.content || '';
+
+    const badgeEl = tr.querySelector('.feedback-status-badge');
+    badgeEl.className = `feedback-status-badge ${statusBadgeClass}`;
+    badgeEl.textContent = currentStatus.toUpperCase();
+
+    const selectEl = tr.querySelector('.feedback-status-sel');
+    selectEl.value = currentStatus;
+    selectEl.dataset.id = item.id;
+
+    const deleteBtn = tr.querySelector('.delete-feedback-btn');
+    deleteBtn.dataset.id = item.id;
+
+    selectEl.addEventListener('change', async (e) => {
+      const prevStatus = currentStatus;
+      const newStatus = e.target.value;
+      selectEl.disabled = true;
+      try {
+        await apiFetch(`/api/admin/feedbacks/${item.id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: newStatus }),
+        });
+        showToast(`Feedback status updated to ${newStatus}`);
+        await loadFeedbacks();
+      } catch (err) {
+        selectEl.value = prevStatus;
+        showToast(err.message);
+      } finally {
+        if (selectEl.isConnected) selectEl.disabled = false;
+      }
+    });
+
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this feedback?')) return;
+      try {
+        await apiFetch(`/api/admin/feedbacks/${item.id}`, { method: 'DELETE' });
+        showToast('Feedback deleted');
+        await loadFeedbacks();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+};
+
+const loadFeedbacks = async () => {
+  feedbacksCache = await apiFetch('/api/admin/feedbacks');
+  renderFeedbacks();
+  updateFeedbackStats();
+};
+
 const switchTab = (activeTabId, activePanelId) => {
-  ['tab-exercises', 'tab-groups', 'tab-config'].forEach((id) => $(id).classList.remove('active'));
-  ['panel-exercises', 'panel-groups', 'panel-config'].forEach((id) => $(id).classList.add('hidden'));
+  ['tab-exercises', 'tab-groups', 'tab-config', 'tab-feedbacks'].forEach((id) => $(id).classList.remove('active'));
+  ['panel-exercises', 'panel-groups', 'panel-config', 'panel-feedbacks'].forEach((id) => $(id).classList.add('hidden'));
   $(activeTabId).classList.add('active');
   $(activePanelId).classList.remove('hidden');
+  if (activeTabId === 'tab-feedbacks') {
+    loadFeedbacks().catch((err) => showToast(err.message));
+  }
 };
 
 $('tab-exercises').addEventListener('click', () => switchTab('tab-exercises', 'panel-exercises'));
 $('tab-groups').addEventListener('click', () => switchTab('tab-groups', 'panel-groups'));
 $('tab-config').addEventListener('click', () => switchTab('tab-config', 'panel-config'));
+$('tab-feedbacks').addEventListener('click', () => switchTab('tab-feedbacks', 'panel-feedbacks'));
+$('feedback-status-filter').addEventListener('change', renderFeedbacks);
+$('feedback-source-filter').addEventListener('change', renderFeedbacks);
+$('refresh-feedbacks-btn').addEventListener('click', async () => {
+  try {
+    await loadFeedbacks();
+    showToast('Feedbacks refreshed');
+  } catch (err) {
+    showToast(err.message);
+  }
+});
 
 const customSelectSyncers = [];
 
@@ -511,7 +661,7 @@ const enhanceSelect = (selectEl) => {
 };
 
 document.addEventListener('click', () => closeAllSelectMenus());
-['ex-category', 'ex-difficulty', 'exercise-category-filter', 'exercise-status-filter', 'merge-source', 'merge-target']
+['ex-category', 'ex-difficulty', 'exercise-category-filter', 'exercise-status-filter', 'merge-source', 'merge-target', 'feedback-status-filter', 'feedback-source-filter']
   .forEach((id) => enhanceSelect($(id)));
 
 if (sessionStorage.getItem(TOKEN_KEY)) {

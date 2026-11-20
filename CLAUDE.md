@@ -24,7 +24,7 @@ npm run ingest:knowledge # Embed & ingest src/data/knowledge/*.md into knowledge
 ## MongoDB & Data Rules
 
 Exact collection names (note hyphens vs underscores):
-- `users`, `refresh-tokens`, `exercises`, `muscle_groups`, `workouts`, `workout-sessions`, `weekly-plans`, `weekly-schedules`, `ai-conversations`, `ai-memories`, `knowledge-chunks`, `site_configs`.
+- `users`, `refresh-tokens`, `exercises`, `muscle_groups`, `workouts`, `workout-sessions`, `weekly-plans`, `weekly-schedules`, `ai-conversations`, `ai-memories`, `knowledge-chunks`, `site_configs`, `feedbacks`.
 
 Rules:
 - Convert string IDs with `new ObjectId(id)` and validate route `:id` params with `ObjectId.isValid(...)` first, returning `400` on invalid IDs (never `500`).

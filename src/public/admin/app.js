@@ -2,6 +2,7 @@ const TOKEN_KEY = 'fittrack_admin_token';
 const USER_KEY = 'fittrack_admin_username';
 let exercisesCache = [];
 let groupsCache = [];
+let feedbacksCache = [];
 let toastTimer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -45,7 +46,7 @@ const showDashboard = async () => {
   $('login-view').classList.add('hidden');
   $('dashboard-view').classList.remove('hidden');
   $('admin-username-label').textContent = sessionStorage.getItem(USER_KEY) || 'ADMIN';
-  await Promise.all([loadGroups(), loadExercises(), loadSiteConfig()]);
+  await Promise.all([loadGroups(), loadExercises(), loadSiteConfig(), loadFeedbacks()]);
   updateKpiStats();
 };
 
@@ -422,16 +423,111 @@ $('config-form').addEventListener('submit', async (e) => {
   updatePreview();
 });
 
+const updateFeedbackStats = () => {
+  const total = feedbacksCache.length;
+  const pending = feedbacksCache.filter((f) => f.status === 'pending').length;
+  const totalEl = $('stat-total-feedbacks');
+  const pendingEl = $('stat-pending-feedbacks');
+  if (totalEl) totalEl.textContent = total;
+  if (pendingEl) pendingEl.textContent = `${pending} PENDING`;
+};
+
+const renderFeedbacks = () => {
+  const tbody = $('feedbacks-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (feedbacksCache.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted text-center" style="padding: 2rem;">No feedbacks found.</td></tr>';
+    return;
+  }
+  feedbacksCache.forEach((item) => {
+    const tr = document.createElement('tr');
+    const createdDate = item.createdAt ? new Date(item.createdAt).toLocaleString() : 'N/A';
+    const statusBadgeClass = item.status === 'resolved' ? 'badge-lime' : item.status === 'reviewed' ? 'badge-orange' : 'badge-orange';
+
+    tr.innerHTML = `
+      <td class="mono-meta" style="font-size: 0.75rem;"></td>
+      <td>
+        <strong class="feedback-user-name" style="display: block; color: #fff;"></strong>
+        <span class="muted feedback-user-email" style="font-size: 0.75rem;"></span>
+      </td>
+      <td>
+        <span class="mono-meta" style="color: #CCFF00; background: rgba(204,255,0,0.1); padding: 2px 6px; border-radius: 2px;"></span>
+      </td>
+      <td class="feedback-content" style="max-width: 320px; white-space: pre-wrap; word-break: break-word;"></td>
+      <td><span class="${statusBadgeClass}">${(item.status || 'pending').toUpperCase()}</span></td>
+      <td class="row-actions" style="text-align: right;">
+        <select class="ft-input feedback-status-sel" data-id="${item.id}" style="width: auto; padding: 2px 6px; font-size: 0.75rem; display: inline-block;">
+          <option value="pending" ${item.status === 'pending' ? 'selected' : ''}>Pending</option>
+          <option value="reviewed" ${item.status === 'reviewed' ? 'selected' : ''}>Reviewed</option>
+          <option value="resolved" ${item.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+        </select>
+        <button type="button" class="ft-btn-ghost btn-sm delete-feedback-btn" data-id="${item.id}" style="color: #FF5C00; padding: 2px 8px;">✕</button>
+      </td>
+    `;
+    tr.children[0].textContent = createdDate;
+    tr.querySelector('.feedback-user-name').textContent = item.userName || 'Anonymous';
+    tr.querySelector('.feedback-user-email').textContent = item.userEmail || '';
+    tr.children[2].children[0].textContent = item.screen || 'General';
+    tr.querySelector('.feedback-content').textContent = item.content || '';
+
+    tr.querySelector('.feedback-status-sel').addEventListener('change', async (e) => {
+      const newStatus = e.target.value;
+      try {
+        await apiFetch(`/api/admin/feedbacks/${item.id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: newStatus }),
+        });
+        showToast(`Feedback status updated to ${newStatus}`);
+        await loadFeedbacks();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    tr.querySelector('.delete-feedback-btn').addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to delete this feedback?')) return;
+      try {
+        await apiFetch(`/api/admin/feedbacks/${item.id}`, { method: 'DELETE' });
+        showToast('Feedback deleted');
+        await loadFeedbacks();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+};
+
+const loadFeedbacks = async () => {
+  const filterEl = $('feedback-status-filter');
+  const status = filterEl ? filterEl.value : '';
+  const url = status ? `/api/admin/feedbacks?status=${encodeURIComponent(status)}` : '/api/admin/feedbacks';
+  feedbacksCache = await apiFetch(url);
+  renderFeedbacks();
+  updateFeedbackStats();
+};
+
 const switchTab = (activeTabId, activePanelId) => {
-  ['tab-exercises', 'tab-groups', 'tab-config'].forEach((id) => $(id).classList.remove('active'));
-  ['panel-exercises', 'panel-groups', 'panel-config'].forEach((id) => $(id).classList.add('hidden'));
+  ['tab-exercises', 'tab-groups', 'tab-config', 'tab-feedbacks'].forEach((id) => $(id).classList.remove('active'));
+  ['panel-exercises', 'panel-groups', 'panel-config', 'panel-feedbacks'].forEach((id) => $(id).classList.add('hidden'));
   $(activeTabId).classList.add('active');
   $(activePanelId).classList.remove('hidden');
+  if (activeTabId === 'tab-feedbacks') {
+    loadFeedbacks();
+  }
 };
 
 $('tab-exercises').addEventListener('click', () => switchTab('tab-exercises', 'panel-exercises'));
 $('tab-groups').addEventListener('click', () => switchTab('tab-groups', 'panel-groups'));
 $('tab-config').addEventListener('click', () => switchTab('tab-config', 'panel-config'));
+$('tab-feedbacks').addEventListener('click', () => switchTab('tab-feedbacks', 'panel-feedbacks'));
+$('feedback-status-filter').addEventListener('change', loadFeedbacks);
+$('refresh-feedbacks-btn').addEventListener('click', () => {
+  loadFeedbacks();
+  showToast('Feedbacks refreshed');
+});
 
 const customSelectSyncers = [];
 

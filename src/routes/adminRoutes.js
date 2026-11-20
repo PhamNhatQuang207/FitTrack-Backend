@@ -17,6 +17,11 @@ const {
   toggleExerciseStatus,
 } = require('../controllers/adminExerciseController');
 const { updateSiteConfig } = require('../controllers/siteConfigController');
+const {
+  listAdminFeedbacks,
+  updateFeedbackStatus,
+  deleteFeedback,
+} = require('../controllers/feedbackController');
 
 const router = express.Router();
 
@@ -91,5 +96,15 @@ router.put(
   validate,
   updateSiteConfig
 );
+
+// Feedback management
+router.get('/feedbacks', listAdminFeedbacks);
+router.patch(
+  '/feedbacks/:id/status',
+  [check('status', 'status is required').isString().isIn(['pending', 'reviewed', 'resolved'])],
+  validate,
+  updateFeedbackStatus
+);
+router.delete('/feedbacks/:id', deleteFeedback);
 
 module.exports = router;

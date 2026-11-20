@@ -120,17 +120,44 @@ describe('E2E Flow 2: Mobile Token Flow & Google OAuth Account Linking', () => {
     expect(profileRes.status).toBe(200);
     expect(profileRes.body.name).toBe('Web Google User');
 
-    // Google-only user cannot log in via password or trigger reset email
+    // Google-only user cannot log in via password; reset request and duplicate signup send Google guidance without tokens
     await request(app)
       .post('/api/auth/login')
       .send({ email: 'webgoogle@example.com', password: 'anypassword' })
       .expect(400);
 
+    sendEmailSmart.mockClear();
     await request(app)
       .post('/api/auth/request-password-reset')
       .send({ email: 'webgoogle@example.com' })
       .expect(200);
-    expect(sendEmailSmart).not.toHaveBeenCalled();
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const googleResetNotice = sendEmailSmart.mock.calls[0][0];
+    expect(googleResetNotice.to).toBe('webgoogle@example.com');
+    expect(googleResetNotice.html).toMatch(/Google/i);
+    expect(googleResetNotice.html).toContain('/login');
+    expect(googleResetNotice.html).not.toContain('token=');
+    expect(googleResetNotice.text).not.toContain('token=');
+
+    const storedWebGoogle = await db.collection('users').findOne({ email: 'webgoogle@example.com' });
+    expect(storedWebGoogle.resetPasswordToken).toBeUndefined();
+
+    sendEmailSmart.mockClear();
+    await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Another Name', email: 'webgoogle@example.com', password: 'password123' })
+      .expect(201);
+    expect(sendEmailSmart).toHaveBeenCalledTimes(1);
+    const googleSignupNotice = sendEmailSmart.mock.calls[0][0];
+    expect(googleSignupNotice.to).toBe('webgoogle@example.com');
+    expect(googleSignupNotice.html).toMatch(/Google/i);
+    expect(googleSignupNotice.html).toContain('/login');
+    expect(googleSignupNotice.html).not.toContain('token=');
+    expect(googleSignupNotice.text).not.toContain('token=');
+
+    const storedWebGoogleAfterReg = await db.collection('users').findOne({ email: 'webgoogle@example.com' });
+    expect(storedWebGoogleAfterReg.password).toBeUndefined();
+    expect(storedWebGoogleAfterReg.googleId).toBe('g-web-1');
 
     // 2. Different Google sub cannot hijack an already-linked Google account
     verifyGoogleToken.mockResolvedValueOnce({

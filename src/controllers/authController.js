@@ -3,7 +3,12 @@ require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const sendEmail = require('../utils/sendEmailSmart');
-const { buildVerificationEmail, buildResetPasswordEmail } = require('../utils/emailTemplates');
+const {
+    buildVerificationEmail,
+    buildResetPasswordEmail,
+    buildAccountExistsEmail,
+    buildGoogleResetNoticeEmail,
+} = require('../utils/emailTemplates');
 const verifyGoogleToken = require('../utils/verifyGoogleToken');
 const {
     REFRESH_COOKIE_NAME,
@@ -42,6 +47,8 @@ const findUserByEmailInsensitive = (db, rawEmail) => {
 // Must stay in step with the "expires in 24 hours" copy in the verification email.
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
+const getFrontendBaseUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
 const register = async (req, res) => {
     try {
         const email = req.body.email.trim().toLowerCase();
@@ -60,9 +67,29 @@ const register = async (req, res) => {
 
         const existingUser = await findUserByEmailInsensitive(db, email);
 
-        // Already registered and verified: do nothing at all. The real owner is
-        // untouched, and the caller can't tell this apart from a fresh signup.
+        // Already registered and verified: leave DB untouched and keep HTTP response identical
+        // to prevent enumeration, while notifying the real account owner by email.
         if (existingUser && existingUser.isVerified) {
+            const isGoogleOnly = Boolean(existingUser.googleId && !existingUser.password);
+            const hasGoogle = Boolean(existingUser.googleId);
+            const frontendBase = getFrontendBaseUrl();
+            const ownerLang = existingUser.preferredLanguage || req.lang || 'en';
+            try {
+                const emailContent = buildAccountExistsEmail({
+                    name: existingUser.name,
+                    loginUrl: `${frontendBase}/login`,
+                    resetUrl: isGoogleOnly ? null : `${frontendBase}/reset-password`,
+                    isGoogleOnly,
+                    hasGoogle,
+                    lang: ownerLang,
+                });
+                await sendEmail({
+                    to: existingUser.email,
+                    ...emailContent,
+                });
+            } catch (emailError) {
+                console.error('Failed to send existing-account notice email:', emailError);
+            }
             return res.status(201).json(genericResponse);
         }
 
@@ -99,7 +126,7 @@ const register = async (req, res) => {
         }
 
         // Send verification email
-        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
+        const verificationUrl = `${getFrontendBaseUrl()}/verify-email?token=${verificationToken}`;
         
         try {
             const emailContent = buildVerificationEmail({ name, verifyUrl: verificationUrl, lang: preferredLanguage });
@@ -219,6 +246,20 @@ const requestPasswordReset = async (req, res) => {
         }
 
         if (!user.password) {
+            const frontendBase = getFrontendBaseUrl();
+            try {
+                const emailContent = buildGoogleResetNoticeEmail({
+                    name: user.name,
+                    loginUrl: `${frontendBase}/login`,
+                    lang: user.preferredLanguage || req.lang || 'en',
+                });
+                await sendEmail({
+                    to: user.email,
+                    ...emailContent,
+                });
+            } catch (emailError) {
+                console.error('Failed to send Google sign-in notice email:', emailError);
+            }
             return res.status(200).json({ message: 'If an account exists with that email, a password reset link has been sent.' });
         }
 
@@ -239,7 +280,7 @@ const requestPasswordReset = async (req, res) => {
         );
 
         // Send reset email
-        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+        const resetUrl = `${getFrontendBaseUrl()}/reset-password?token=${resetToken}`;
 
         try {
             const emailContent = buildResetPasswordEmail({
